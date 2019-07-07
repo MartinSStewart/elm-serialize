@@ -15,8 +15,7 @@ suite =
         [ describe "Basic" basicTests
         , describe "Containers" containersTests
         , describe "Object" objectTests
-
-        --        , describe "Custom" customTests
+        , describe "Custom" customTests
         , describe "bimap" bimapTests
         , describe "maybe" maybeTests
         , describe "constant"
@@ -153,63 +152,60 @@ type Newtype a
     = Newtype a
 
 
+customTests : List Test
+customTests =
+    [ describe "with 1 ctor, 0 args"
+        [ roundtrips (Fuzz.constant ())
+            (Codec.custom
+                (\f v ->
+                    case v of
+                        () ->
+                            f
+                )
+                |> Codec.variant0 0 ()
+                |> Codec.buildCustom
+            )
+        ]
+    , describe "with 1 ctor, 1 arg"
+        [ roundtrips (Fuzz.map Newtype signedInt32Fuzz)
+            (Codec.custom
+                (\f v ->
+                    case v of
+                        Newtype a ->
+                            f a
+                )
+                |> Codec.variant1 1 Newtype Codec.int
+                |> Codec.buildCustom
+            )
+        ]
+    , describe "with 2 ctors, 0,1 args" <|
+        let
+            match fnothing fjust value =
+                case value of
+                    Nothing ->
+                        fnothing
 
---customTests : List Test
---customTests =
---    [ describe "with 1 ctor, 0 args"
---        [ roundtrips (Fuzz.constant ())
---            (Codec.custom
---                (\f v ->
---                    case v of
---                        () ->
---                            f
---                )
---                |> Codec.variant0 "()" ()
---                |> Codec.buildCustom
---            )
---        ]
---    , describe "with 1 ctor, 1 arg"
---        [ roundtrips (Fuzz.map Newtype Fuzz.int)
---            (Codec.custom
---                (\f v ->
---                    case v of
---                        Newtype a ->
---                            f a
---                )
---                |> Codec.variant1 "Newtype" Newtype Codec.int
---                |> Codec.buildCustom
---            )
---        ]
---    , describe "with 2 ctors, 0,1 args" <|
---        let
---            match fnothing fjust value =
---                case value of
---                    Nothing ->
---                        fnothing
---
---                    Just v ->
---                        fjust v
---
---            codec =
---                Codec.custom match
---                    |> Codec.variant0 "Nothing" Nothing
---                    |> Codec.variant1 "Just" Just Codec.int
---                    |> Codec.buildCustom
---
---            fuzzers =
---                [ ( "1st ctor", Fuzz.constant Nothing )
---                , ( "2nd ctor", Fuzz.map Just Fuzz.int )
---                ]
---        in
---        fuzzers
---            |> List.map
---                (\( name, fuzz ) ->
---                    describe name
---                        [ roundtrips fuzz codec ]
---                )
---    ]
---
---
+                    Just v ->
+                        fjust v
+
+            codec =
+                Codec.custom match
+                    |> Codec.variant0 0 Nothing
+                    |> Codec.variant1 1 Just Codec.int
+                    |> Codec.buildCustom
+
+            fuzzers =
+                [ ( "1st ctor", Fuzz.constant Nothing )
+                , ( "2nd ctor", Fuzz.map Just signedInt32Fuzz )
+                ]
+        in
+        fuzzers
+            |> List.map
+                (\( name, fuzz ) ->
+                    describe name
+                        [ roundtrips fuzz codec ]
+                )
+    ]
 
 
 bimapTests : List Test
