@@ -402,7 +402,7 @@ field getter codec (ObjectCodec ocodec) =
 buildObject : ObjectCodec a a -> Codec a
 buildObject (ObjectCodec om) =
     Codec
-        { encoder = \v -> JE.sequence <| om.encoder v
+        { encoder = om.encoder >> List.reverse >> JE.sequence
         , decoder = om.decoder
         }
 

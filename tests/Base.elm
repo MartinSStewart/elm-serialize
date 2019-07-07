@@ -60,7 +60,7 @@ basicTests =
         [ roundtrips Fuzz.string Codec.string
         ]
     , describe "Codec.int"
-        [ roundtrips Fuzz.int Codec.int
+        [ roundtrips signedInt32Fuzz Codec.int
         ]
     , describe "Codec.float"
         [ roundtrips Fuzz.float Codec.float
@@ -77,7 +77,7 @@ containersTests =
       --        [ roundtrips (Fuzz.array Fuzz.int) (Codec.array Codec.int)
       --        ]
       describe "Codec.list"
-        [ roundtrips (Fuzz.list Fuzz.int) (Codec.list Codec.int)
+        [ roundtrips (Fuzz.list signedInt32Fuzz) (Codec.list Codec.int)
         ]
 
     --    , describe "Codec.dict"
@@ -101,6 +101,14 @@ containersTests =
     ]
 
 
+unsignedInt32Fuzz =
+    Fuzz.intRange 0 4294967295
+
+
+signedInt32Fuzz =
+    Fuzz.intRange -2147483648 2147483647
+
+
 objectTests : List Test
 objectTests =
     [ describe "with 0 fields"
@@ -110,7 +118,7 @@ objectTests =
             )
         ]
     , describe "with 1 field"
-        [ roundtrips (Fuzz.map (\i -> { fname = i }) Fuzz.int)
+        [ roundtrips (Fuzz.map (\i -> { fname = i }) signedInt32Fuzz)
             (Codec.object (\i -> { fname = i })
                 |> Codec.field .fname Codec.int
                 |> Codec.buildObject
@@ -124,8 +132,8 @@ objectTests =
                     , b = b
                     }
                 )
-                Fuzz.int
-                Fuzz.int
+                signedInt32Fuzz
+                signedInt32Fuzz
             )
             (Codec.object
                 (\a b ->
