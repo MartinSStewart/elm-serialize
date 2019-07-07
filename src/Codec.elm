@@ -3,7 +3,7 @@ module Codec exposing
     , Decoder, decoder, decodeValue
     , encoder, encodeToValue
     , string, bool, int, float
-    , maybe, list
+    , maybe, list, array, dict, set, tuple, triple, result
     , ObjectCodec, object, field, buildObject
     , CustomCodec, custom, variant0, variant1, variant2, variant3, variant4, variant5, buildCustom
     , map
@@ -11,7 +11,6 @@ module Codec exposing
     --, oneOf
     --, recursive
     --, char
-    --, maybe, array, dict, set, tuple, triple, result
     --, variant6, variant7, variant8
     )
 
@@ -290,86 +289,86 @@ listStep decoder_ ( n, xs ) =
         JD.map (\x -> JD.Loop ( n - 1, x :: xs )) decoder_
 
 
+{-| `Codec` between a JSON array and an Elm `Array`.
+-}
+array : Codec a -> Codec (Array a)
+array codec =
+    list codec |> map Array.fromList Array.toList
 
---{-| `Codec` between a JSON array and an Elm `Array`.
----}
---array : Codec a -> Codec (Array a)
---array =
---    build JE.array JD.array
---
---
---{-| `Codec` between a JSON object and an Elm `Dict`.
----}
---dict : Codec a -> Codec (Dict String a)
---dict =
---    build
---        (\e -> JE.object << Dict.toList << Dict.map (\_ -> e))
---        JD.dict
---
---
---{-| `Codec` between a JSON array and an Elm `Set`.
----}
---set : Codec comparable -> Codec (Set comparable)
---set =
---    build
---        (\e -> JE.list e << Set.toList)
---        (JD.map Set.fromList << JD.list)
---
---
---{-| `Codec` between a JSON array of length 2 and an Elm `Tuple`.
----}
---tuple : Codec a -> Codec b -> Codec ( a, b )
---tuple m1 m2 =
---    Codec
---        { encoder =
---            \( v1, v2 ) ->
---                JE.list identity
---                    [ encoder m1 v1
---                    , encoder m2 v2
---                    ]
---        , decoder =
---            JD.map2
---                (\a b -> ( a, b ))
---                (JD.index 0 <| decoder m1)
---                (JD.index 1 <| decoder m2)
---        }
---
---
---{-| `Codec` between a JSON array of length 3 and an Elm triple.
----}
---triple : Codec a -> Codec b -> Codec c -> Codec ( a, b, c )
---triple m1 m2 m3 =
---    Codec
---        { encoder =
---            \( v1, v2, v3 ) ->
---                JE.list identity
---                    [ encoder m1 v1
---                    , encoder m2 v2
---                    , encoder m3 v3
---                    ]
---        , decoder =
---            JD.map3
---                (\a b c -> ( a, b, c ))
---                (JD.index 0 <| decoder m1)
---                (JD.index 1 <| decoder m2)
---                (JD.index 2 <| decoder m3)
---        }
---{-| `Codec` for `Result` values.
----}
---result : Codec error -> Codec value -> Codec (Result error value)
---result errorCodec valueCodec =
---    custom
---        (\ferr fok value ->
---            case value of
---                Err err ->
---                    ferr err
---
---                Ok ok ->
---                    fok ok
---        )
---        |> variant1 "Err" Err errorCodec
---        |> variant1 "Ok" Ok valueCodec
---        |> buildCustom
+
+{-| `Codec` between a JSON object and an Elm `Dict`.
+-}
+dict : Codec comparable -> Codec a -> Codec (Dict comparable a)
+dict keyCodec valueCodec =
+    list (tuple keyCodec valueCodec) |> map Dict.fromList Dict.toList
+
+
+{-| `Codec` between a JSON array and an Elm `Set`.
+-}
+set : Codec comparable -> Codec (Set comparable)
+set codec =
+    list codec |> map Set.fromList Set.toList
+
+
+{-| `Codec` between a JSON array of length 2 and an Elm `Tuple`.
+-}
+tuple : Codec a -> Codec b -> Codec ( a, b )
+tuple m1 m2 =
+    Codec
+        { encoder =
+            \( v1, v2 ) ->
+                JE.sequence
+                    [ encoder m1 v1
+                    , encoder m2 v2
+                    ]
+        , decoder =
+            JD.map2
+                (\a b -> ( a, b ))
+                (decoder m1)
+                (decoder m2)
+        }
+
+
+{-| `Codec` between a JSON array of length 3 and an Elm triple.
+-}
+triple : Codec a -> Codec b -> Codec c -> Codec ( a, b, c )
+triple m1 m2 m3 =
+    Codec
+        { encoder =
+            \( v1, v2, v3 ) ->
+                JE.sequence
+                    [ encoder m1 v1
+                    , encoder m2 v2
+                    , encoder m3 v3
+                    ]
+        , decoder =
+            JD.map3
+                (\a b c -> ( a, b, c ))
+                (decoder m1)
+                (decoder m2)
+                (decoder m3)
+        }
+
+
+{-| `Codec` for `Result` values.
+-}
+result : Codec error -> Codec value -> Codec (Result error value)
+result errorCodec valueCodec =
+    custom
+        (\ferr fok value ->
+            case value of
+                Err err ->
+                    ferr err
+
+                Ok ok ->
+                    fok ok
+        )
+        |> variant1 0 Err errorCodec
+        |> variant1 1 Ok valueCodec
+        |> buildCustom
+
+
+
 -- OBJECTS
 
 

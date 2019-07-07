@@ -72,31 +72,30 @@ basicTests =
 
 containersTests : List Test
 containersTests =
-    [ --    describe "Codec.array"
-      --        [ roundtrips (Fuzz.array Fuzz.int) (Codec.array Codec.int)
-      --        ]
-      describe "Codec.list"
+    [ describe "Codec.array"
+        [ roundtrips (Fuzz.array signedInt32Fuzz) (Codec.array Codec.int)
+        ]
+    , describe "Codec.list"
         [ roundtrips (Fuzz.list signedInt32Fuzz) (Codec.list Codec.int)
         ]
-
-    --    , describe "Codec.dict"
-    --        [ roundtrips
-    --            (Fuzz.map2 Tuple.pair Fuzz.string Fuzz.int
-    --                |> Fuzz.list
-    --                |> Fuzz.map Dict.fromList
-    --            )
-    --            (Codec.dict Codec.int)
-    --        ]
-    --    , describe "Codec.set"
-    --        [ roundtrips
-    --            (Fuzz.list Fuzz.int |> Fuzz.map Set.fromList)
-    --            (Codec.set Codec.int)
-    --        ]
-    --    , describe "Codec.tuple"
-    --        [ roundtrips
-    --            (Fuzz.tuple ( Fuzz.int, Fuzz.int ))
-    --            (Codec.tuple Codec.int Codec.int)
-    --        ]
+    , describe "Codec.dict"
+        [ roundtrips
+            (Fuzz.map2 Tuple.pair Fuzz.string signedInt32Fuzz
+                |> Fuzz.list
+                |> Fuzz.map Dict.fromList
+            )
+            (Codec.dict Codec.string Codec.int)
+        ]
+    , describe "Codec.set"
+        [ roundtrips
+            (Fuzz.list signedInt32Fuzz |> Fuzz.map Set.fromList)
+            (Codec.set Codec.int)
+        ]
+    , describe "Codec.tuple"
+        [ roundtrips
+            (Fuzz.tuple ( signedInt32Fuzz, signedInt32Fuzz ))
+            (Codec.tuple Codec.int Codec.int)
+        ]
     ]
 
 
