@@ -26,8 +26,7 @@ suite =
                         |> Expect.equal (Just 632)
                 )
             ]
-
-        --, describe "recursive" recursiveTests
+        , describe "recursive" recursiveTests
         ]
 
 
@@ -249,24 +248,26 @@ maybeTests =
       ]
 -}
 --]
---recursiveTests : List Test
---recursiveTests =
---    [ describe "list"
---        [ roundtrips (Fuzz.list Fuzz.int) <|
---            Codec.recursive
---                (\c ->
---                    Codec.custom
---                        (\fempty fcons value ->
---                            case value of
---                                [] ->
---                                    fempty
---
---                                x :: xs ->
---                                    fcons x xs
---                        )
---                        |> Codec.variant0 "[]" []
---                        |> Codec.variant2 "(::)" (::) Codec.int c
---                        |> Codec.buildCustom
---                )
---        ]
---    ]
+
+
+recursiveTests : List Test
+recursiveTests =
+    [ describe "list"
+        [ roundtrips (Fuzz.list signedInt32Fuzz) <|
+            Codec.recursive
+                (\c ->
+                    Codec.custom
+                        (\fempty fcons value ->
+                            case value of
+                                [] ->
+                                    fempty
+
+                                x :: xs ->
+                                    fcons x xs
+                        )
+                        |> Codec.variant0 0 []
+                        |> Codec.variant2 1 (::) Codec.int c
+                        |> Codec.buildCustom
+                )
+        ]
+    ]

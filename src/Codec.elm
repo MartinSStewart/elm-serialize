@@ -7,9 +7,8 @@ module Codec exposing
     , ObjectCodec, object, field, buildObject
     , CustomCodec, custom, variant0, variant1, variant2, variant3, variant4, variant5, buildCustom
     , map
-    , constant
+    , constant, recursive
     --, oneOf
-    --, recursive
     --, char
     --, variant6, variant7, variant8
     )
@@ -764,21 +763,21 @@ map go back codec =
 
 
 
----- FANCY
---
---
---{-| Create a `Codec` for a recursive data structure.
---The argument to the function you need to pass is the fully formed `Codec`.
----}
---recursive : (Codec a -> Codec a) -> Codec a
---recursive f =
---    let
---        step =
---            { decoder = JD.lazy (\_ -> decoder <| recursive f)
---            , encoder = \value -> encoder (recursive f) value
---            }
---    in
---    f <| Codec step
+-- FANCY
+
+
+{-| Create a `Codec` for a recursive data structure.
+The argument to the function you need to pass is the fully formed `Codec`.
+-}
+recursive : (Codec a -> Codec a) -> Codec a
+recursive f =
+    let
+        step =
+            { decoder = JD.succeed () |> JD.andThen (\() -> recursive f |> decoder)
+            , encoder = \value -> encoder (recursive f) value
+            }
+    in
+    f <| Codec step
 
 
 {-| Create a `Codec` that produces null as JSON and always decodes as the same value.
