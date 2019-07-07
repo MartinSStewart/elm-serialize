@@ -8,12 +8,11 @@ module Codec exposing
     , CustomCodec, custom, variant0, variant1, variant2, variant3, variant4, variant5, buildCustom
     , map
     , constant, recursive
-    --, oneOf
     --, char
     --, variant6, variant7, variant8
     )
 
-{-| A `Codec a` contain a JSON `Decoder a` and the corresponding `a -> Value` encoder.
+{-| A `Codec a` contains a `Bytes.Decoder a` and the corresponding `a -> Bytes.Encoder`.
 
 
 # Definition
@@ -51,11 +50,6 @@ module Codec exposing
 @docs CustomCodec, custom, variant0, variant1, variant2, variant3, variant4, variant5, variant6, variant7, variant8, buildCustom
 
 
-# Inconsistent structure
-
-@docs oneOf
-
-
 # Mapping
 
 @docs map
@@ -79,7 +73,7 @@ import Set exposing (Set)
 -- DEFINITION
 
 
-{-| A value that knows how to encode and decode JSON values.
+{-| A value that knows how to encode and decode byte values.
 -}
 type Codec a
     = Codec
@@ -735,20 +729,6 @@ buildCustom (CustomCodec am) =
 
 
 
--- INCONSISTENT STRUCTURE
---{-| Try a set of decoders (in order).
---The first argument is used for encoding and decoding, the list of other codecs is used as a fallback while decoding.
---
---This is particularly useful for backwards compatibility. You would pass the current codec as the first argument,
---and the old ones (eventually `map`ped) as a fallback list to use while decoding.
---
----}
---oneOf : Codec a -> List (Codec a) -> Codec a
---oneOf main alts =
---    Codec
---        { encoder = encoder main
---        , decoder = JD.oneOf <| decoder main :: List.map decoder alts
---        }
 -- MAPPING
 
 
