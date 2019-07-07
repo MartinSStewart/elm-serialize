@@ -18,7 +18,7 @@ suite =
 
         --        , describe "Custom" customTests
         --        , describe "bimap" bimapTests
-        --        , describe "maybe" maybeTests
+        , describe "maybe" maybeTests
         , describe "constant"
             [ test "roundtrips"
                 (\_ ->
@@ -218,18 +218,24 @@ type Newtype a
 --            (\x -> x / 2)
 --            Codec.float
 --    ]
---maybeTests : List Test
---maybeTests =
---    [ describe "single"
---        [ roundtrips
---            (Fuzz.oneOf
---                [ Fuzz.constant Nothing
---                , Fuzz.map Just Fuzz.int
---                ]
---            )
---          <|
---            Codec.maybe Codec.int
---        ]
+
+
+maybeTests : List Test
+maybeTests =
+    [ describe "single"
+        [ roundtrips
+            (Fuzz.oneOf
+                [ Fuzz.constant Nothing
+                , Fuzz.map Just signedInt32Fuzz
+                ]
+            )
+          <|
+            Codec.maybe Codec.int
+        ]
+    ]
+
+
+
 {-
    This is a known limitation: using null as Nothing and identity as Just means that nesting two maybes squashes Just Nothing with Nothing
    , describe "double"

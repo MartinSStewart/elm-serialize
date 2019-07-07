@@ -3,7 +3,7 @@ module Codec exposing
     , Decoder, decoder, decodeValue
     , encoder, encodeToValue
     , string, bool, int, float
-    , list
+    , maybe, list
     , ObjectCodec, object, field, buildObject
     , constant
     --, CustomCodec, custom, variant0, variant1, variant2, variant3, variant4, variant5, variant6, variant7, variant8, buildCustom
@@ -224,32 +224,37 @@ build enc dec (Codec codec) =
         }
 
 
+{-| Represents an optional value.
+-}
+maybe : Codec a -> Codec (Maybe a)
+maybe codec =
+    Codec
+        { decoder =
+            JD.unsignedInt8
+                |> JD.andThen
+                    (\value ->
+                        case value of
+                            0 ->
+                                JD.succeed Nothing
 
---{-| Represents an optional value.
----}
---maybe : Codec a -> Codec (Maybe a)
---maybe (Codec codec) =
---    Codec
---        { decoder =
---            JD.unsignedInt8 |>
---                JD.andThen (\value ->
---                    case value of
---                        0 -> JD.succeed Nothing
---                        1 -> codec.decoder
---                        _ -> JD.fail
---                    )
---        , encoder =
---            \v ->
---                case v of
---                    Nothing ->
---                        JE.unsignedInt8 0
---
---                    Just x ->
---                        JE.sequence
---                            [ JE.unsignedInt8 1
---                            , codec.encoder x
---                            ]
---        }
+                            1 ->
+                                decoder codec |> JD.map Just
+
+                            _ ->
+                                JD.fail
+                    )
+        , encoder =
+            \v ->
+                case v of
+                    Nothing ->
+                        JE.unsignedInt8 0
+
+                    Just x ->
+                        JE.sequence
+                            [ JE.unsignedInt8 1
+                            , encoder codec x
+                            ]
+        }
 
 
 {-| `Codec` between a JSON array and an Elm `List`.
