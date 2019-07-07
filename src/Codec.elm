@@ -2,7 +2,7 @@ module Codec exposing
     ( Codec
     , Decoder, decoder, decodeValue
     , encoder, encodeToValue
-    , string, bool, int, float
+    , string, bool, signedInt, unsignedInt, float64, float32, signedInt32, unsignedInt32, signedInt16, unsignedInt16, signedInt8, unsignedInt8
     , maybe, list, array, dict, set, tuple, triple, result
     , ObjectCodec, object, field, buildObject
     , CustomCodec, custom, variant0, variant1, variant2, variant3, variant4, variant5, buildCustom
@@ -32,7 +32,7 @@ module Codec exposing
 
 # Primitives
 
-@docs string, bool, int, float, char
+@docs string, bool, int, float, char, signedInt, unsignedInt, float64, float32, signedInt32, unsignedInt32, signedInt16, unsignedInt16, signedInt8, unsignedInt8
 
 
 # Data Structures
@@ -184,18 +184,77 @@ bool =
         )
 
 
-{-| `Codec` between a JSON number and an Elm `Int`
+{-| `Codec` between a signed 32-bit integer and an Elm `Int`.
+Use this if the byte ordering and number of bytes used isn't a concern.
 -}
-int : Codec Int
-int =
-    base (JE.signedInt32 endian) (JD.signedInt32 endian)
+signedInt : Codec Int
+signedInt =
+    signedInt32 endian
 
 
-{-| `Codec` between a JSON number and an Elm `Float`
+{-| `Codec` between an unsigned 32-bit integer and an Elm `Int`.
+Use this if the byte ordering and number of bytes used isn't a concern.
 -}
-float : Codec Float
-float =
+unsignedInt : Codec Int
+unsignedInt =
+    unsignedInt32 endian
+
+
+{-| `Codec` between a signed 32-bit integer and an Elm `Int`
+-}
+signedInt32 : Endianness -> Codec Int
+signedInt32 endianness =
+    base (JE.signedInt32 endianness) (JD.signedInt32 endianness)
+
+
+{-| `Codec` between an unsigned 32-bit integer and an Elm `Int`
+-}
+unsignedInt32 : Endianness -> Codec Int
+unsignedInt32 endianness =
+    base (JE.unsignedInt32 endianness) (JD.unsignedInt32 endianness)
+
+
+{-| `Codec` between a signed 16-bit integer and an Elm `Int`
+-}
+signedInt16 : Endianness -> Codec Int
+signedInt16 endianness =
+    base (JE.signedInt16 endianness) (JD.signedInt16 endianness)
+
+
+{-| `Codec` between an unsigned 16-bit integer and an Elm `Int`
+-}
+unsignedInt16 : Endianness -> Codec Int
+unsignedInt16 endianness =
+    base (JE.unsignedInt16 endianness) (JD.unsignedInt16 endianness)
+
+
+{-| `Codec` between a signed 8-bit integer and an Elm `Int`
+-}
+signedInt8 : Codec Int
+signedInt8 =
+    base JE.signedInt8 JD.signedInt8
+
+
+{-| `Codec` between an unsigned 8-bit integer and an Elm `Int`
+-}
+unsignedInt8 : Codec Int
+unsignedInt8 =
+    base JE.unsignedInt8 JD.unsignedInt8
+
+
+{-| `Codec` between a 64-bit floating and an Elm `Float`
+-}
+float64 : Codec Float
+float64 =
     base (JE.float64 endian) (JD.float64 endian)
+
+
+{-| `Codec` between a 32-bit floating and an Elm `Float`.
+Due to Elm `Float`s being 64-bit, encoding and decoding it as a 32-bit float won't exactly equal the original value.
+-}
+float32 : Codec Float
+float32 =
+    base (JE.float32 endian) (JD.float32 endian)
 
 
 {-| `Codec` between a JSON string of length 1 and an Elm `Char`
