@@ -2,13 +2,12 @@ module Codec exposing
     ( Codec
     , Decoder, decoder, decodeValue
     , encoder, encodeToValue
-    , string, bool, signedInt, unsignedInt, float64, float32, signedInt32, unsignedInt32, signedInt16, unsignedInt16, signedInt8, unsignedInt8
+    , string, bool, char, signedInt, unsignedInt, float64, float32, signedInt32, unsignedInt32, signedInt16, unsignedInt16, signedInt8, unsignedInt8
     , maybe, list, array, dict, set, tuple, triple, result
     , ObjectCodec, object, field, buildObject
     , CustomCodec, custom, variant0, variant1, variant2, variant3, variant4, variant5, buildCustom
     , map
     , constant, recursive
-    --, char
     --, variant6, variant7, variant8
     )
 
@@ -257,14 +256,19 @@ float32 =
     base (JE.float32 endian) (JD.float32 endian)
 
 
-{-| `Codec` between a JSON string of length 1 and an Elm `Char`
+{-| `Codec` between a unicode code point and an Elm `Char`
 -}
+char : Codec Char
+char =
+    base
+        (String.fromChar >> encoder string)
+        (decoder string
+            |> JD.andThen
+                (String.toList >> List.head >> Maybe.map JD.succeed >> Maybe.withDefault JD.fail)
+        )
 
 
 
---char : Codec Char
---char =
---    string |> map String.fromChar ()
 -- DATA STRUCTURES
 
 

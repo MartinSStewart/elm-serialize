@@ -71,6 +71,9 @@ basicTests =
     , describe "Codec.bool"
         [ roundtrips Fuzz.bool Codec.bool
         ]
+    , describe "Codec.char"
+        [ roundtrips Fuzz.char Codec.char
+        ]
     ]
 
 
