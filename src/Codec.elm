@@ -8,7 +8,9 @@ module Codec exposing
     , CustomCodec, custom, variant0, variant1, variant2, variant3, variant4, variant5, buildCustom
     , map
     , constant, recursive
-    --, variant6, variant7, variant8
+    ,  Encoder
+       --, variant6, variant7, variant8
+
     )
 
 {-| A `Codec a` contains a `Bytes.Decoder a` and the corresponding `a -> Bytes.Encoder`.
@@ -21,12 +23,12 @@ module Codec exposing
 
 # Decode
 
-@docs Decoder, decoder, decodeString, decodeValue
+@docs Decoder, decoder, decodeValue
 
 
 # Encode
 
-@docs encoder, encodeToString, encodeToValue
+@docs encoder, encodeToValue
 
 
 # Primitives
@@ -62,8 +64,8 @@ module Codec exposing
 
 import Array exposing (Array)
 import Bytes exposing (Bytes, Endianness)
-import Bytes.Decode as JD
-import Bytes.Encode as JE
+import Bytes.Decode as BD
+import Bytes.Encode as BE
 import Dict exposing (Dict)
 import Set exposing (Set)
 
@@ -72,23 +74,38 @@ import Set exposing (Set)
 -- DEFINITION
 
 
-{-| A value that knows how to encode and decode byte values.
+{-| A value that knows how to encode and decode a sequence of bytes.
 -}
 type Codec a
     = Codec
-        { encoder : a -> JE.Encoder
+        { encoder : a -> Encoder
         , decoder : Decoder a
         }
+
+
+{-| Describes how to generate a sequence of bytes.
+-}
+type alias Encoder =
+    BE.Encoder
+
+
+{-| The direction bytes are ordered. Refer to [the elm/bytes docs][endianness] for more information.
+
+[endianness]: http://www.ietf.org/rfc/ien/ien137.txt
+
+-}
+type alias Endianness =
+    Bytes.Endianness
 
 
 
 -- DECODE
 
 
-{-| A value that knows how to decode JSON values.
+{-| Describes how to turn a sequence of bytes into a nice Elm value.
 -}
 type alias Decoder a =
-    JD.Decoder a
+    BD.Decoder a
 
 
 endian : Endianness
@@ -103,12 +120,11 @@ decoder (Codec m) =
     m.decoder
 
 
-{-| Run a `Codec` to decode some JSON `Value`. You can send these JSON values
-through ports, so that is probably the main time you would use this function.
+{-| Run a `Codec` to turn a sequence of bytes into an Elm value.
 -}
 decodeValue : Codec a -> Bytes -> Maybe a
 decodeValue codec =
-    JD.decode (decoder codec)
+    BD.decode (decoder codec)
 
 
 
@@ -117,23 +133,23 @@ decodeValue codec =
 
 {-| Extracts the encoding function contained inside the `Codec`.
 -}
-encoder : Codec a -> a -> JE.Encoder
+encoder : Codec a -> a -> Encoder
 encoder (Codec m) =
     m.encoder
 
 
-{-| Convert a value into a Javascript `Value`.
+{-| Convert an Elm value a sequence of bytes.
 -}
 encodeToValue : Codec a -> a -> Bytes
 encodeToValue codec value =
-    encoder codec value |> JE.encode
+    encoder codec value |> BE.encode
 
 
 
 -- BASE
 
 
-base : (a -> JE.Encoder) -> Decoder a -> Codec a
+base : (a -> Encoder) -> Decoder a -> Codec a
 base encoder_ decoder_ =
     Codec
         { encoder = encoder_
@@ -141,44 +157,44 @@ base encoder_ decoder_ =
         }
 
 
-{-| `Codec` between a JSON string and an Elm `String`
+{-| `Codec` between a sequence of bytes and an Elm `String`
 -}
 string : Codec String
 string =
     base
         (\text ->
-            JE.sequence
-                [ JE.unsignedInt32 endian (String.length text)
-                , JE.string text
+            BE.sequence
+                [ BE.unsignedInt32 endian (String.length text)
+                , BE.string text
                 ]
         )
-        (JD.unsignedInt32 endian |> JD.andThen (\charCount -> JD.string charCount))
+        (BD.unsignedInt32 endian |> BD.andThen (\charCount -> BD.string charCount))
 
 
-{-| `Codec` between a JSON boolean and an Elm `Bool`
+{-| `Codec` between a sequence of bytes and an Elm `Bool`
 -}
 bool : Codec Bool
 bool =
     base
         (\value ->
             if value then
-                JE.unsignedInt8 1
+                BE.unsignedInt8 1
 
             else
-                JE.unsignedInt8 0
+                BE.unsignedInt8 0
         )
-        (JD.unsignedInt8
-            |> JD.andThen
+        (BD.unsignedInt8
+            |> BD.andThen
                 (\value ->
                     case value of
                         0 ->
-                            JD.succeed False
+                            BD.succeed False
 
                         1 ->
-                            JD.succeed True
+                            BD.succeed True
 
                         _ ->
-                            JD.fail
+                            BD.fail
                 )
         )
 
@@ -203,49 +219,49 @@ unsignedInt =
 -}
 signedInt32 : Endianness -> Codec Int
 signedInt32 endianness =
-    base (JE.signedInt32 endianness) (JD.signedInt32 endianness)
+    base (BE.signedInt32 endianness) (BD.signedInt32 endianness)
 
 
 {-| `Codec` between an unsigned 32-bit integer and an Elm `Int`
 -}
 unsignedInt32 : Endianness -> Codec Int
 unsignedInt32 endianness =
-    base (JE.unsignedInt32 endianness) (JD.unsignedInt32 endianness)
+    base (BE.unsignedInt32 endianness) (BD.unsignedInt32 endianness)
 
 
 {-| `Codec` between a signed 16-bit integer and an Elm `Int`
 -}
 signedInt16 : Endianness -> Codec Int
 signedInt16 endianness =
-    base (JE.signedInt16 endianness) (JD.signedInt16 endianness)
+    base (BE.signedInt16 endianness) (BD.signedInt16 endianness)
 
 
 {-| `Codec` between an unsigned 16-bit integer and an Elm `Int`
 -}
 unsignedInt16 : Endianness -> Codec Int
 unsignedInt16 endianness =
-    base (JE.unsignedInt16 endianness) (JD.unsignedInt16 endianness)
+    base (BE.unsignedInt16 endianness) (BD.unsignedInt16 endianness)
 
 
 {-| `Codec` between a signed 8-bit integer and an Elm `Int`
 -}
 signedInt8 : Codec Int
 signedInt8 =
-    base JE.signedInt8 JD.signedInt8
+    base BE.signedInt8 BD.signedInt8
 
 
 {-| `Codec` between an unsigned 8-bit integer and an Elm `Int`
 -}
 unsignedInt8 : Codec Int
 unsignedInt8 =
-    base JE.unsignedInt8 JD.unsignedInt8
+    base BE.unsignedInt8 BD.unsignedInt8
 
 
 {-| `Codec` between a 64-bit floating and an Elm `Float`
 -}
 float64 : Codec Float
 float64 =
-    base (JE.float64 endian) (JD.float64 endian)
+    base (BE.float64 endian) (BD.float64 endian)
 
 
 {-| `Codec` between a 32-bit floating and an Elm `Float`.
@@ -253,18 +269,18 @@ Due to Elm `Float`s being 64-bit, encoding and decoding it as a 32-bit float won
 -}
 float32 : Codec Float
 float32 =
-    base (JE.float32 endian) (JD.float32 endian)
+    base (BE.float32 endian) (BD.float32 endian)
 
 
-{-| `Codec` between a unicode code point and an Elm `Char`
+{-| `Codec` between a sequence of bytes and an Elm `Char`
 -}
 char : Codec Char
 char =
     base
         (String.fromChar >> encoder string)
         (decoder string
-            |> JD.andThen
-                (String.toList >> List.head >> Maybe.map JD.succeed >> Maybe.withDefault JD.fail)
+            |> BD.andThen
+                (String.toList >> List.head >> Maybe.map BD.succeed >> Maybe.withDefault BD.fail)
         )
 
 
@@ -272,7 +288,7 @@ char =
 -- DATA STRUCTURES
 
 
-build : ((b -> JE.Encoder) -> (a -> JE.Encoder)) -> (Decoder b -> Decoder a) -> Codec b -> Codec a
+build : ((b -> Encoder) -> (a -> Encoder)) -> (Decoder b -> Decoder a) -> Codec b -> Codec a
 build enc dec (Codec codec) =
     Codec
         { encoder = enc codec.encoder
@@ -286,119 +302,118 @@ maybe : Codec a -> Codec (Maybe a)
 maybe codec =
     Codec
         { decoder =
-            JD.unsignedInt8
-                |> JD.andThen
+            BD.unsignedInt8
+                |> BD.andThen
                     (\value ->
                         case value of
                             0 ->
-                                JD.succeed Nothing
+                                BD.succeed Nothing
 
                             1 ->
-                                decoder codec |> JD.map Just
+                                decoder codec |> BD.map Just
 
                             _ ->
-                                JD.fail
+                                BD.fail
                     )
         , encoder =
             \v ->
                 case v of
                     Nothing ->
-                        JE.unsignedInt8 0
+                        BE.unsignedInt8 0
 
                     Just x ->
-                        JE.sequence
-                            [ JE.unsignedInt8 1
+                        BE.sequence
+                            [ BE.unsignedInt8 1
                             , encoder codec x
                             ]
         }
 
 
-{-| `Codec` between a JSON array and an Elm `List`.
+{-| `Codec` between a sequence of bytes and an Elm `List`.
 -}
 list : Codec a -> Codec (List a)
 list codec =
-    --build JE.list JD.list
     Codec
         { encoder = listEncode (encoder codec)
         , decoder =
-            JD.unsignedInt32 endian
-                |> JD.andThen
-                    (\length -> JD.loop ( length, [] ) (listStep (decoder codec)))
+            BD.unsignedInt32 endian
+                |> BD.andThen
+                    (\length -> BD.loop ( length, [] ) (listStep (decoder codec)))
         }
 
 
-listEncode : (a -> JE.Encoder) -> List a -> JE.Encoder
+listEncode : (a -> Encoder) -> List a -> Encoder
 listEncode encoder_ list_ =
     list_
         |> List.map encoder_
         |> List.reverse
-        |> (::) (JE.unsignedInt32 endian (List.length list_))
-        |> JE.sequence
+        |> (::) (BE.unsignedInt32 endian (List.length list_))
+        |> BE.sequence
 
 
-listStep : JD.Decoder a -> ( Int, List a ) -> Decoder (JD.Step ( Int, List a ) (List a))
+listStep : BD.Decoder a -> ( Int, List a ) -> Decoder (BD.Step ( Int, List a ) (List a))
 listStep decoder_ ( n, xs ) =
     if n <= 0 then
-        JD.succeed (JD.Done xs)
+        BD.succeed (BD.Done xs)
 
     else
-        JD.map (\x -> JD.Loop ( n - 1, x :: xs )) decoder_
+        BD.map (\x -> BD.Loop ( n - 1, x :: xs )) decoder_
 
 
-{-| `Codec` between a JSON array and an Elm `Array`.
+{-| `Codec` between a sequence of bytes and an Elm `Array`.
 -}
 array : Codec a -> Codec (Array a)
 array codec =
     list codec |> map Array.fromList Array.toList
 
 
-{-| `Codec` between a JSON object and an Elm `Dict`.
+{-| `Codec` between a sequence of bytes and an Elm `Dict`.
 -}
 dict : Codec comparable -> Codec a -> Codec (Dict comparable a)
 dict keyCodec valueCodec =
     list (tuple keyCodec valueCodec) |> map Dict.fromList Dict.toList
 
 
-{-| `Codec` between a JSON array and an Elm `Set`.
+{-| `Codec` between a sequence of bytes and an Elm `Set`.
 -}
 set : Codec comparable -> Codec (Set comparable)
 set codec =
     list codec |> map Set.fromList Set.toList
 
 
-{-| `Codec` between a JSON array of length 2 and an Elm `Tuple`.
+{-| `Codec` between a sequence of bytes and an Elm `Tuple`.
 -}
 tuple : Codec a -> Codec b -> Codec ( a, b )
 tuple m1 m2 =
     Codec
         { encoder =
             \( v1, v2 ) ->
-                JE.sequence
+                BE.sequence
                     [ encoder m1 v1
                     , encoder m2 v2
                     ]
         , decoder =
-            JD.map2
+            BD.map2
                 (\a b -> ( a, b ))
                 (decoder m1)
                 (decoder m2)
         }
 
 
-{-| `Codec` between a JSON array of length 3 and an Elm triple.
+{-| `Codec` between a sequence of bytes and an Elm triple.
 -}
 triple : Codec a -> Codec b -> Codec c -> Codec ( a, b, c )
 triple m1 m2 m3 =
     Codec
         { encoder =
             \( v1, v2, v3 ) ->
-                JE.sequence
+                BE.sequence
                     [ encoder m1 v1
                     , encoder m2 v2
                     , encoder m3 v3
                     ]
         , decoder =
-            JD.map3
+            BD.map3
                 (\a b c -> ( a, b, c ))
                 (decoder m1)
                 (decoder m2)
@@ -432,7 +447,7 @@ result errorCodec valueCodec =
 -}
 type ObjectCodec a b
     = ObjectCodec
-        { encoder : a -> List JE.Encoder
+        { encoder : a -> List Encoder
         , decoder : Decoder b
         }
 
@@ -444,17 +459,17 @@ object : b -> ObjectCodec a b
 object ctor =
     ObjectCodec
         { encoder = \_ -> []
-        , decoder = JD.succeed ctor
+        , decoder = BD.succeed ctor
         }
 
 
-{-| Specify the name getter and `Codec` for a field.
+{-| Specify the id getter and `Codec` for a field.
 -}
 field : (a -> f) -> Codec f -> ObjectCodec a (f -> b) -> ObjectCodec a b
 field getter codec (ObjectCodec ocodec) =
     ObjectCodec
         { encoder = \v -> (encoder codec <| getter v) :: ocodec.encoder v
-        , decoder = JD.map2 (\f x -> f x) ocodec.decoder (decoder codec)
+        , decoder = BD.map2 (\f x -> f x) ocodec.decoder (decoder codec)
         }
 
 
@@ -463,7 +478,7 @@ field getter codec (ObjectCodec ocodec) =
 buildObject : ObjectCodec a a -> Codec a
 buildObject (ObjectCodec om) =
     Codec
-        { encoder = om.encoder >> List.reverse >> JE.sequence
+        { encoder = om.encoder >> List.reverse >> BE.sequence
         , decoder = om.decoder
         }
 
@@ -494,16 +509,16 @@ custom match =
 
 variant :
     Int
-    -> ((List JE.Encoder -> JE.Encoder) -> a)
+    -> ((List Encoder -> Encoder) -> a)
     -> Decoder v
     -> CustomCodec (a -> b) v
     -> CustomCodec b v
 variant name matchPiece decoderPiece (CustomCodec am) =
     let
         enc v =
-            JE.unsignedInt32 endian name
+            BE.unsignedInt32 endian name
                 :: v
-                |> JE.sequence
+                |> BE.sequence
 
         decoder_ tag orElse =
             if tag == name then
@@ -523,12 +538,12 @@ variant name matchPiece decoderPiece (CustomCodec am) =
 variant0 :
     Int
     -> v
-    -> CustomCodec (JE.Encoder -> a) v
+    -> CustomCodec (Encoder -> a) v
     -> CustomCodec a v
 variant0 name ctor =
     variant name
         (\c -> c [])
-        (JD.succeed ctor)
+        (BD.succeed ctor)
 
 
 {-| Define a variant with 1 parameters for a custom type.
@@ -537,7 +552,7 @@ variant1 :
     Int
     -> (a -> v)
     -> Codec a
-    -> CustomCodec ((a -> JE.Encoder) -> b) v
+    -> CustomCodec ((a -> Encoder) -> b) v
     -> CustomCodec b v
 variant1 name ctor m1 =
     variant name
@@ -546,7 +561,7 @@ variant1 name ctor m1 =
                 [ encoder m1 v
                 ]
         )
-        (JD.map ctor
+        (BD.map ctor
             (decoder m1)
         )
 
@@ -558,17 +573,17 @@ variant2 :
     -> (a -> b -> v)
     -> Codec a
     -> Codec b
-    -> CustomCodec ((a -> b -> JE.Encoder) -> c) v
+    -> CustomCodec ((a -> b -> Encoder) -> c) v
     -> CustomCodec c v
-variant2 name ctor m1 m2 =
-    variant name
+variant2 id ctor m1 m2 =
+    variant id
         (\c v1 v2 ->
             c
                 [ encoder m1 v1
                 , encoder m2 v2
                 ]
         )
-        (JD.map2 ctor
+        (BD.map2 ctor
             (decoder m1)
             (decoder m2)
         )
@@ -582,10 +597,10 @@ variant3 :
     -> Codec a
     -> Codec b
     -> Codec c
-    -> CustomCodec ((a -> b -> c -> JE.Encoder) -> partial) v
+    -> CustomCodec ((a -> b -> c -> Encoder) -> partial) v
     -> CustomCodec partial v
-variant3 name ctor m1 m2 m3 =
-    variant name
+variant3 id ctor m1 m2 m3 =
+    variant id
         (\c v1 v2 v3 ->
             c
                 [ encoder m1 v1
@@ -593,7 +608,7 @@ variant3 name ctor m1 m2 m3 =
                 , encoder m3 v3
                 ]
         )
-        (JD.map3 ctor
+        (BD.map3 ctor
             (decoder m1)
             (decoder m2)
             (decoder m3)
@@ -609,10 +624,10 @@ variant4 :
     -> Codec b
     -> Codec c
     -> Codec d
-    -> CustomCodec ((a -> b -> c -> d -> JE.Encoder) -> partial) v
+    -> CustomCodec ((a -> b -> c -> d -> Encoder) -> partial) v
     -> CustomCodec partial v
-variant4 name ctor m1 m2 m3 m4 =
-    variant name
+variant4 id ctor m1 m2 m3 m4 =
+    variant id
         (\c v1 v2 v3 v4 ->
             c
                 [ encoder m1 v1
@@ -621,7 +636,7 @@ variant4 name ctor m1 m2 m3 m4 =
                 , encoder m4 v4
                 ]
         )
-        (JD.map4 ctor
+        (BD.map4 ctor
             (decoder m1)
             (decoder m2)
             (decoder m3)
@@ -639,10 +654,10 @@ variant5 :
     -> Codec c
     -> Codec d
     -> Codec e
-    -> CustomCodec ((a -> b -> c -> d -> e -> JE.Encoder) -> partial) v
+    -> CustomCodec ((a -> b -> c -> d -> e -> Encoder) -> partial) v
     -> CustomCodec partial v
-variant5 name ctor m1 m2 m3 m4 m5 =
-    variant name
+variant5 id ctor m1 m2 m3 m4 m5 =
+    variant id
         (\c v1 v2 v3 v4 v5 ->
             c
                 [ encoder m1 v1
@@ -652,7 +667,7 @@ variant5 name ctor m1 m2 m3 m4 m5 =
                 , encoder m5 v5
                 ]
         )
-        (JD.map5 ctor
+        (BD.map5 ctor
             (decoder m1)
             (decoder m2)
             (decoder m3)
@@ -673,10 +688,10 @@ variant5 name ctor m1 m2 m3 m4 m5 =
 --    -> Codec d
 --    -> Codec e
 --    -> Codec f
---    -> CustomCodec ((a -> b -> c -> d -> e -> f -> JE.Encoder) -> partial) v
+--    -> CustomCodec ((a -> b -> c -> d -> e -> f -> Encoder) -> partial) v
 --    -> CustomCodec partial v
---variant6 name ctor m1 m2 m3 m4 m5 m6 =
---    variant name
+--variant6 id ctor m1 m2 m3 m4 m5 m6 =
+--    variant id
 --        (\c v1 v2 v3 v4 v5 v6 ->
 --            c
 --                [ encoder m1 v1
@@ -709,10 +724,10 @@ variant5 name ctor m1 m2 m3 m4 m5 =
 --    -> Codec e
 --    -> Codec f
 --    -> Codec g
---    -> CustomCodec ((a -> b -> c -> d -> e -> f -> g -> JE.Encoder) -> partial) v
+--    -> CustomCodec ((a -> b -> c -> d -> e -> f -> g -> Encoder) -> partial) v
 --    -> CustomCodec partial v
---variant7 name ctor m1 m2 m3 m4 m5 m6 m7 =
---    variant name
+--variant7 id ctor m1 m2 m3 m4 m5 m6 m7 =
+--    variant id
 --        (\c v1 v2 v3 v4 v5 v6 v7 ->
 --            c
 --                [ encoder m1 v1
@@ -748,10 +763,10 @@ variant5 name ctor m1 m2 m3 m4 m5 =
 --    -> Codec f
 --    -> Codec g
 --    -> Codec h
---    -> CustomCodec ((a -> b -> c -> d -> e -> f -> g -> h -> JE.Encoder) -> partial) v
+--    -> CustomCodec ((a -> b -> c -> d -> e -> f -> g -> h -> Encoder) -> partial) v
 --    -> CustomCodec partial v
---variant8 name ctor m1 m2 m3 m4 m5 m6 m7 m8 =
---    variant name
+--variant8 id ctor m1 m2 m3 m4 m5 m6 m7 m8 =
+--    variant id
 --        (\c v1 v2 v3 v4 v5 v6 v7 v8 ->
 --            c
 --                [ encoder m1 v1
@@ -778,15 +793,15 @@ variant5 name ctor m1 m2 m3 m4 m5 =
 
 {-| Build a `Codec` for a fully specified custom type.
 -}
-buildCustom : CustomCodec (a -> JE.Encoder) a -> Codec a
+buildCustom : CustomCodec (a -> Encoder) a -> Codec a
 buildCustom (CustomCodec am) =
     Codec
         { encoder = \v -> am.match v
         , decoder =
-            JD.unsignedInt32 endian
-                |> JD.andThen
+            BD.unsignedInt32 endian
+                |> BD.andThen
                     (\tag ->
-                        am.decoder tag JD.fail
+                        am.decoder tag BD.fail
                     )
         }
 
@@ -800,7 +815,7 @@ buildCustom (CustomCodec am) =
 map : (a -> b) -> (b -> a) -> Codec a -> Codec b
 map go back codec =
     Codec
-        { decoder = JD.map go <| decoder codec
+        { decoder = BD.map go <| decoder codec
         , encoder = \v -> back v |> encoder codec
         }
 
@@ -816,18 +831,18 @@ recursive : (Codec a -> Codec a) -> Codec a
 recursive f =
     let
         step =
-            { decoder = JD.succeed () |> JD.andThen (\() -> recursive f |> decoder)
+            { decoder = BD.succeed () |> BD.andThen (\() -> recursive f |> decoder)
             , encoder = \value -> encoder (recursive f) value
             }
     in
     f <| Codec step
 
 
-{-| Create a `Codec` that produces null as JSON and always decodes as the same value.
+{-| Create a `Codec` that encodes nothing and always decodes as the same value.
 -}
 constant : a -> Codec a
 constant default_ =
     Codec
-        { decoder = JD.succeed default_
-        , encoder = \_ -> JE.sequence []
+        { decoder = BD.succeed default_
+        , encoder = \_ -> BE.sequence []
         }

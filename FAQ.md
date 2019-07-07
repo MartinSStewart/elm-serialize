@@ -1,3 +1,9 @@
+## What's different between this and miniBill/elm-codec?
+Besides the fact that this package is designed for `elm/bytes` instead of `elm/json` other notable differences are:
+* `variantX` functions use `Int` instead of `String` for telling apart different constructors
+* `CustomObject` fields don't need to be given names but their order matters 
+* There is no `oneOf` or `optionalField`
+
 ## How do you use `recursive`?
 The trick to understanding the `recursive` codec is: pretend you are already done.
 When the function you pass to `recursive` is called the argument is the finished `Codec`.
@@ -34,7 +40,7 @@ An example:
 
 ```elm
 type Semaphore
-    = Red Int String
+    = Red Int String Bool
     | Yellow Float
     | Green
 
@@ -44,8 +50,8 @@ semaphoreCodec =
     Codec.custom
         (\fred fyellow fgreen value ->
             case value of
-                Red i s ->
-                    fred i s
+                Red i s b ->
+                    fred i s b
 
                 Yellow f ->
                     fyellow f
@@ -53,21 +59,8 @@ semaphoreCodec =
                 Green ->
                     fgreen
         )
-        |> Codec.variant2 "Red" Red Codec.int Codec.string
-        |> Codec.variant1 "Yellow" Yellow Codec.float
-        |> Codec.variant0 "Green" Green
+        |> Codec.variant3 0 Red Codec.signedInt Codec.string Codec.bool
+        |> Codec.variant1 1 Yellow Codec.float64
+        |> Codec.variant0 2 Green
         |> Codec.buildCustom
 ```
-
-## What happens to existing `Value`s if I change my `Codec`s?
-Old `Value`s will be parsed fine by new `Codec`s if you:
-* add new `variant`s to custom types,
-* remove (from the end) parameters from `variant`s,
-* change any `Codec` to a `constant` one or
-* add optional fields to records.
-
-New `Value`s will be parsed fine by old `Codec`s if you:
-* remove `variant`s from custom types,
-* append parameters to `variant`s ,
-* change a `constant` `Codec` to any other one or
-* remove fields from records.

@@ -239,25 +239,6 @@ maybeTests =
     ]
 
 
-
-{-
-   This is a known limitation: using null as Nothing and identity as Just means that nesting two maybes squashes Just Nothing with Nothing
-   , describe "double"
-      [ roundtrips
-          (Fuzz.oneOf
-              [ Fuzz.constant Nothing
-              , Fuzz.constant <| Just Nothing
-              , Fuzz.map (Just << Just) Fuzz.int
-              ]
-          )
-        <|
-          Codec.maybe <|
-              Codec.maybe Codec.int
-      ]
--}
---]
-
-
 recursiveTests : List Test
 recursiveTests =
     [ describe "list"
