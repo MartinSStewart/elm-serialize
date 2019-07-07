@@ -17,7 +17,7 @@ suite =
         , describe "Object" objectTests
 
         --        , describe "Custom" customTests
-        --        , describe "bimap" bimapTests
+        , describe "bimap" bimapTests
         , describe "maybe" maybeTests
         , describe "constant"
             [ test "roundtrips"
@@ -210,14 +210,16 @@ type Newtype a
 --    ]
 --
 --
---bimapTests : List Test
---bimapTests =
---    [ roundtripsWithin Fuzz.float <|
---        Codec.map
---            (\x -> x * 2)
---            (\x -> x / 2)
---            Codec.float
---    ]
+
+
+bimapTests : List Test
+bimapTests =
+    [ roundtrips Fuzz.float <|
+        Codec.map
+            (\x -> x * 2)
+            (\x -> x / 2)
+            Codec.float
+    ]
 
 
 maybeTests : List Test

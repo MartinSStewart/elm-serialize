@@ -5,10 +5,10 @@ module Codec exposing
     , string, bool, int, float
     , maybe, list
     , ObjectCodec, object, field, buildObject
+    , map
     , constant
     --, CustomCodec, custom, variant0, variant1, variant2, variant3, variant4, variant5, variant6, variant7, variant8, buildCustom
     --, oneOf
-    --, map
     --, recursive
     --, char
     --, maybe, array, dict, set, tuple, triple, result
@@ -752,23 +752,20 @@ custom match =
 --        { encoder = encoder main
 --        , decoder = JD.oneOf <| decoder main :: List.map decoder alts
 --        }
---
---
---
----- MAPPING
---
---
---{-| Transform a `Codec`.
----}
---map : (a -> b) -> (b -> a) -> Codec a -> Codec b
---map go back codec =
---    Codec
---        { decoder = JD.map go <| decoder codec
---        , encoder = \v -> back v |> encoder codec
---        }
---
---
---
+-- MAPPING
+
+
+{-| Transform a `Codec`.
+-}
+map : (a -> b) -> (b -> a) -> Codec a -> Codec b
+map go back codec =
+    Codec
+        { decoder = JD.map go <| decoder codec
+        , encoder = \v -> back v |> encoder codec
+        }
+
+
+
 ---- FANCY
 --
 --
