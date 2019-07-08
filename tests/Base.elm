@@ -188,6 +188,18 @@ customTests =
                 |> Codec.buildCustom
             )
         ]
+    , describe "with 1 ctor, 1 arg, different id codec"
+        [ roundtrips (Fuzz.map Newtype signedInt32Fuzz)
+            (Codec.customWithIdCodec Codec.unsignedInt8
+                (\f v ->
+                    case v of
+                        Newtype a ->
+                            f a
+                )
+                |> Codec.variant1 1 Newtype Codec.signedInt
+                |> Codec.buildCustom
+            )
+        ]
     , describe "with 1 ctor, 6 arg"
         [ roundtrips (Fuzz.map5 (Newtype6 0) signedInt32Fuzz signedInt32Fuzz signedInt32Fuzz signedInt32Fuzz signedInt32Fuzz)
             (Codec.custom
@@ -212,8 +224,9 @@ customTests =
 
             codec =
                 Codec.custom match
-                    |> Codec.variant0 0 Nothing
-                    |> Codec.variant1 1 Just Codec.signedInt
+                    -- Use a negative id here just to make sure the default id codec handles negative values
+                    |> Codec.variant0 -1 Nothing
+                    |> Codec.variant1 0 Just Codec.signedInt
                     |> Codec.buildCustom
 
             fuzzers =

@@ -7,7 +7,7 @@ module Codec exposing
     , ObjectCodec, object, field, buildObject
     , CustomCodec, custom, variant0, variant1, variant2, variant3, variant4, variant5, variant6, variant7, variant8, buildCustom
     , map
-    , constant, recursive
+    , constant, recursive, customWithIdCodec
     )
 
 {-| A `Codec a` contains a `Bytes.Decoder a` and the corresponding `a -> Bytes.Encoder`.
@@ -55,7 +55,7 @@ module Codec exposing
 
 # Fancy Codecs
 
-@docs constant, recursive
+@docs constant, recursive, customWithIdCodec
 
 -}
 
@@ -499,6 +499,7 @@ type CustomCodec match v
     = CustomCodec
         { match : match
         , decoder : Int -> Decoder v -> Decoder v
+        , idCodec : Codec Int
         }
 
 
@@ -507,10 +508,7 @@ You need to pass a pattern matching function, see the examples and FAQ for detai
 -}
 custom : match -> CustomCodec match value
 custom match =
-    CustomCodec
-        { match = match
-        , decoder = \_ -> identity
-        }
+    customWithIdCodec signedInt match
 
 
 variant :
@@ -522,7 +520,7 @@ variant :
 variant name matchPiece decoderPiece (CustomCodec am) =
     let
         enc v =
-            BE.unsignedInt32 endian name
+            encoder am.idCodec name
                 :: v
                 |> BE.sequence
 
@@ -536,6 +534,7 @@ variant name matchPiece decoderPiece (CustomCodec am) =
     CustomCodec
         { match = am.match <| matchPiece enc
         , decoder = decoder_
+        , idCodec = am.idCodec
         }
 
 
@@ -820,7 +819,7 @@ buildCustom (CustomCodec am) =
     Codec
         { encoder = \v -> am.match v
         , decoder =
-            BD.unsignedInt32 endian
+            decoder am.idCodec
                 |> BD.andThen
                     (\tag ->
                         am.decoder tag BD.fail
@@ -858,6 +857,18 @@ recursive f =
             }
     in
     f <| Codec step
+
+
+{-| Same as `custom` but here we can choose what codec to use for the integer id we tell apart variants with.
+This is useful if, for example, you know you won't have ids outside of the range 0 - 255 and can use unsignedInt8 instead of the default signedInt32 to save some space.
+-}
+customWithIdCodec : Codec Int -> match -> CustomCodec match value
+customWithIdCodec idCodec match =
+    CustomCodec
+        { match = match
+        , decoder = \_ -> identity
+        , idCodec = idCodec
+        }
 
 
 {-| Create a `Codec` that encodes nothing and always decodes as the same value.
