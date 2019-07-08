@@ -1,5 +1,5 @@
 {
-  "name": "elm-bytes-codec",
+  "name": "elm-codec-bytes",
   "version": "1.0.0",
   "main": "index.js",
   "license": "MIT",

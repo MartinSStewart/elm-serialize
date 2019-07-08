@@ -2,7 +2,7 @@
 
 This package allows you to build pairs of encoders (`a -> Encoder`) and decoders (`Decoder a`) for a sequence of bytes, collectively called a `Codec a`.
 
-It is inspired by `miniBill/elm-bytes` and reuses much of the API. 
+It is inspired by `miniBill/elm-codec` and reuses much of the API. 
 It's not quite a drop in replacement however, see FAQ.md for a list of differences.
 
 ## Design Goals

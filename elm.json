@@ -1,6 +1,6 @@
 {
     "type": "package",
-    "name": "MartinSStewart/elm-bytes-codec",
+    "name": "MartinSStewart/elm-codec-bytes",
     "summary": "Build binary encoders and decoders with minimal boilerplate",
     "license": "MIT",
     "version": "1.1.0",
