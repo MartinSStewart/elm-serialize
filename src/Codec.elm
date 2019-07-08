@@ -30,7 +30,7 @@ module Codec exposing
 
 # Primitives
 
-@docs string, bool, int, float, char, signedInt, unsignedInt, float64, float32, signedInt32, unsignedInt32, signedInt16, unsignedInt16, signedInt8, unsignedInt8
+@docs string, bool, char, signedInt, unsignedInt, float64, float32, signedInt32, unsignedInt32, signedInt16, unsignedInt16, signedInt8, unsignedInt8
 
 
 # Data Structures
@@ -144,7 +144,7 @@ encoder (Codec m) =
     m.encoder
 
 
-{-| Convert an Elm value a sequence of bytes.
+{-| Convert an Elm value into a sequence of bytes.
 -}
 encodeToValue : Codec a -> a -> Bytes
 encodeToValue codec value =
