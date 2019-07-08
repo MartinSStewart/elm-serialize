@@ -158,6 +158,10 @@ type Newtype a
     = Newtype a
 
 
+type Newtype6 a b c d e f
+    = Newtype6 a b c d e f
+
+
 customTests : List Test
 customTests =
     [ describe "with 1 ctor, 0 args"
@@ -181,6 +185,18 @@ customTests =
                             f a
                 )
                 |> Codec.variant1 1 Newtype Codec.signedInt
+                |> Codec.buildCustom
+            )
+        ]
+    , describe "with 1 ctor, 6 arg"
+        [ roundtrips (Fuzz.map5 (Newtype6 0) signedInt32Fuzz signedInt32Fuzz signedInt32Fuzz signedInt32Fuzz signedInt32Fuzz)
+            (Codec.custom
+                (\function v ->
+                    case v of
+                        Newtype6 a b c d e f ->
+                            function a b c d e f
+                )
+                |> Codec.variant6 1 Newtype6 Codec.signedInt Codec.signedInt Codec.signedInt Codec.signedInt Codec.signedInt Codec.signedInt
                 |> Codec.buildCustom
             )
         ]

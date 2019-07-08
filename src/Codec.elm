@@ -5,10 +5,9 @@ module Codec exposing
     , string, bool, char, signedInt, unsignedInt, float64, float32, signedInt32, unsignedInt32, signedInt16, unsignedInt16, signedInt8, unsignedInt8
     , maybe, list, array, dict, set, tuple, triple, result
     , ObjectCodec, object, field, buildObject
-    , CustomCodec, custom, variant0, variant1, variant2, variant3, variant4, variant5, buildCustom
+    , CustomCodec, custom, variant0, variant1, variant2, variant3, variant4, variant5, variant6, variant7, variant8, buildCustom
     , map
     , constant, recursive
-    --, variant6, variant7, variant8
     )
 
 {-| A `Codec a` contains a `Bytes.Decoder a` and the corresponding `a -> Bytes.Encoder`.
@@ -683,119 +682,135 @@ variant5 id ctor m1 m2 m3 m4 m5 =
         )
 
 
+mapNext : Decoder a -> (a -> b) -> Decoder b
+mapNext decoder_ a =
+    BD.map a decoder_
 
---{-| Define a variant with 6 parameters for a custom type.
----}
---variant6 :
---    Int
---    -> (a -> b -> c -> d -> e -> f -> v)
---    -> Codec a
---    -> Codec b
---    -> Codec c
---    -> Codec d
---    -> Codec e
---    -> Codec f
---    -> CustomCodec ((a -> b -> c -> d -> e -> f -> Encoder) -> partial) v
---    -> CustomCodec partial v
---variant6 id ctor m1 m2 m3 m4 m5 m6 =
---    variant id
---        (\c v1 v2 v3 v4 v5 v6 ->
---            c
---                [ encoder m1 v1
---                , encoder m2 v2
---                , encoder m3 v3
---                , encoder m4 v4
---                , encoder m5 v5
---                , encoder m6 v6
---                ]
---        )
---        (JD.map6 ctor
---            (decoder m1)
---            (decoder m2)
---            (decoder m3)
---            (decoder m4)
---            (decoder m5)
---            (decoder m6)
---        )
---
---
---{-| Define a variant with 7 parameters for a custom type.
----}
---variant7 :
---    Int
---    -> (a -> b -> c -> d -> e -> f -> g -> v)
---    -> Codec a
---    -> Codec b
---    -> Codec c
---    -> Codec d
---    -> Codec e
---    -> Codec f
---    -> Codec g
---    -> CustomCodec ((a -> b -> c -> d -> e -> f -> g -> Encoder) -> partial) v
---    -> CustomCodec partial v
---variant7 id ctor m1 m2 m3 m4 m5 m6 m7 =
---    variant id
---        (\c v1 v2 v3 v4 v5 v6 v7 ->
---            c
---                [ encoder m1 v1
---                , encoder m2 v2
---                , encoder m3 v3
---                , encoder m4 v4
---                , encoder m5 v5
---                , encoder m6 v6
---                , encoder m7 v7
---                ]
---        )
---        (JD.map7 ctor
---            (decoder m1)
---            (decoder m2)
---            (decoder m3)
---            (decoder m4)
---            (decoder m5)
---            (decoder m6)
---            (decoder m7)
---        )
---
---
---{-| Define a variant with 8 parameters for a custom type.
----}
---variant8 :
---    Int
---    -> (a -> b -> c -> d -> e -> f -> g -> h -> v)
---    -> Codec a
---    -> Codec b
---    -> Codec c
---    -> Codec d
---    -> Codec e
---    -> Codec f
---    -> Codec g
---    -> Codec h
---    -> CustomCodec ((a -> b -> c -> d -> e -> f -> g -> h -> Encoder) -> partial) v
---    -> CustomCodec partial v
---variant8 id ctor m1 m2 m3 m4 m5 m6 m7 m8 =
---    variant id
---        (\c v1 v2 v3 v4 v5 v6 v7 v8 ->
---            c
---                [ encoder m1 v1
---                , encoder m2 v2
---                , encoder m3 v3
---                , encoder m4 v4
---                , encoder m5 v5
---                , encoder m6 v6
---                , encoder m7 v7
---                , encoder m8 v8
---                ]
---        )
---        (JD.map8 ctor
---            (decoder m1)
---            (decoder m2)
---            (decoder m3)
---            (decoder m4)
---            (decoder m5)
---            (decoder m6)
---            (decoder m7)
---            (decoder m8)
---        )
+
+{-| Define a variant with 6 parameters for a custom type.
+-}
+variant6 :
+    Int
+    -> (a -> b -> c -> d -> e -> f -> v)
+    -> Codec a
+    -> Codec b
+    -> Codec c
+    -> Codec d
+    -> Codec e
+    -> Codec f
+    -> CustomCodec ((a -> b -> c -> d -> e -> f -> Encoder) -> partial) v
+    -> CustomCodec partial v
+variant6 id ctor m1 m2 m3 m4 m5 m6 =
+    variant id
+        (\c v1 v2 v3 v4 v5 v6 ->
+            c
+                [ encoder m1 v1
+                , encoder m2 v2
+                , encoder m3 v3
+                , encoder m4 v4
+                , encoder m5 v5
+                , encoder m6 v6
+                ]
+        )
+        (BD.map5 (\a b c d ( e, f ) -> ctor a b c d e f)
+            (decoder m1)
+            (decoder m2)
+            (decoder m3)
+            (decoder m4)
+            (BD.map2 Tuple.pair
+                (decoder m5)
+                (decoder m6)
+            )
+        )
+
+
+{-| Define a variant with 7 parameters for a custom type.
+-}
+variant7 :
+    Int
+    -> (a -> b -> c -> d -> e -> f -> g -> v)
+    -> Codec a
+    -> Codec b
+    -> Codec c
+    -> Codec d
+    -> Codec e
+    -> Codec f
+    -> Codec g
+    -> CustomCodec ((a -> b -> c -> d -> e -> f -> g -> Encoder) -> partial) v
+    -> CustomCodec partial v
+variant7 id ctor m1 m2 m3 m4 m5 m6 m7 =
+    variant id
+        (\c v1 v2 v3 v4 v5 v6 v7 ->
+            c
+                [ encoder m1 v1
+                , encoder m2 v2
+                , encoder m3 v3
+                , encoder m4 v4
+                , encoder m5 v5
+                , encoder m6 v6
+                , encoder m7 v7
+                ]
+        )
+        (BD.map5 (\a b c ( d, e ) ( f, g ) -> ctor a b c d e f g)
+            (decoder m1)
+            (decoder m2)
+            (decoder m3)
+            (BD.map2 Tuple.pair
+                (decoder m4)
+                (decoder m5)
+            )
+            (BD.map2 Tuple.pair
+                (decoder m6)
+                (decoder m7)
+            )
+        )
+
+
+{-| Define a variant with 8 parameters for a custom type.
+-}
+variant8 :
+    Int
+    -> (a -> b -> c -> d -> e -> f -> g -> h -> v)
+    -> Codec a
+    -> Codec b
+    -> Codec c
+    -> Codec d
+    -> Codec e
+    -> Codec f
+    -> Codec g
+    -> Codec h
+    -> CustomCodec ((a -> b -> c -> d -> e -> f -> g -> h -> Encoder) -> partial) v
+    -> CustomCodec partial v
+variant8 id ctor m1 m2 m3 m4 m5 m6 m7 m8 =
+    variant id
+        (\c v1 v2 v3 v4 v5 v6 v7 v8 ->
+            c
+                [ encoder m1 v1
+                , encoder m2 v2
+                , encoder m3 v3
+                , encoder m4 v4
+                , encoder m5 v5
+                , encoder m6 v6
+                , encoder m7 v7
+                , encoder m8 v8
+                ]
+        )
+        (BD.map5 (\a b ( c, d ) ( e, f ) ( g, h ) -> ctor a b c d e f g h)
+            (decoder m1)
+            (decoder m2)
+            (BD.map2 Tuple.pair
+                (decoder m3)
+                (decoder m4)
+            )
+            (BD.map2 Tuple.pair
+                (decoder m5)
+                (decoder m6)
+            )
+            (BD.map2 Tuple.pair
+                (decoder m7)
+                (decoder m8)
+            )
+        )
 
 
 {-| Build a `Codec` for a fully specified custom type.
