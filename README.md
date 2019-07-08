@@ -1,34 +1,35 @@
-# elm-codecs
+# elm-codec-bytes
 
-[![Build Status](https://travis-ci.org/miniBill/elm-codec.svg?branch=master)](https://travis-ci.org/miniBill/elm-codec)
+This package allows you to build pairs of encoders (`a -> Encoder`) and decoders (`Decoder a`) for a sequence of bytes, collectively called a `Codec a`.
 
-This package allows you to build pairs of JSON encoders (`a -> Value`) and decoders (`Decoder a`), collectively called a `Codec a`.
+It is inspired by `miniBill/elm-bytes` and reuses much of the API. 
+It's not quite a drop in replacement however, see FAQ.md for a list of differences.
 
 ## Design Goals
 
 The design goal is to be as type safe as possible while keeping a nice API.
 Using this package will greatly reduce the risk of unmatched encoders and decoders.
 
-The packages re-exposes the `Value` and `Decoder` types from `elm/json`, so you don't need to import them too.
+The packages re-exposes the `Encoder`, `Decoder`, `Bytes`, and `Endianness` types from `elm/bytes`, so you don't need to import them too.
 
 ## Examples
 
 ### Basic usage ###
 
 ```elm
-import Codec exposing (Codec, Value)
+import Codec exposing (Bytes, Codec, Encoder)
 
 codec : Codec (List Int)
 codec =
-    Codec.list Codec.int
+    Codec.list Codec.signedInt
 
-encode : List Int -> Value
+encode : List Int -> Bytes
 encode list =
-    Codec.encoder codec list
+    Codec.encodeToValue codec list
 
-decodeString : String -> Result Codec.Error (List Int)
-decodeString s =
-    Codec.decodeString codec s
+decode : Bytes -> Maybe (List Int)
+decode s =
+    Codec.decodeValue codec s
 ```
 
 ## Learning Resources

@@ -2,7 +2,8 @@
 Besides the fact that this package is designed for `elm/bytes` instead of `elm/json` other notable differences are:
 * `variantX` functions use `Int` instead of `String` for telling apart different constructors
 * `CustomObject` fields don't need to be given names but their order matters 
-* There is no `oneOf` or `optionalField`
+* There is no `oneOf` or `optionalField` in this package
+* There are more ways to encode elm `int` and `float` values (i.e. `signedInt`, `unsignedInt`, `float32`, `float64`)
 
 ## How do you use `recursive`?
 The trick to understanding the `recursive` codec is: pretend you are already done.
@@ -63,4 +64,56 @@ semaphoreCodec =
         |> Codec.variant1 1 Yellow Codec.float64
         |> Codec.variant0 2 Green
         |> Codec.buildCustom
+```
+
+## If there's no `oneOf` or `optionalField`, how is versioning done?
+If you want your `Codec`s to evolve over time and still be able to decode old 
+encoded data, the recommended approach is to treat the different versions as a custom type.
+Then you can write a `custom` Codec for those possible versions and use `map` to convert it to the data structure used within your app.
+
+An example:
+```elm
+{-| The gps coordinate we use internally in our application
+-}
+type alias GpsCoordinate =
+    ( Float, Float )
+
+
+type GpsVersions
+    = GpsV1 String -- Old naive way of storing GPS coordinates
+    | GpsV2 ( Float, Float ) -- New better way
+
+
+gpsV1Codec =
+    Codec.string
+
+
+gpsV2Codec =
+    Codec.tuple Codec.float64 Codec.float64
+
+
+gpsCodec : Codec GpsCoordinate
+gpsCodec =
+    Codec.custom
+        (\fv1 fv2 value ->
+            case value of
+                GpsV1 text ->
+                    fv1 text
+
+                GpsV2 tuple ->
+                    fv2 tuple
+        )
+        |> Codec.variant1 1 GpsV1 gpsV1Codec
+        |> Codec.variant1 2 GpsV2 gpsV2Codec
+        |> Codec.buildCustom
+        |> Codec.map
+            (\value ->
+                case value of
+                    GpsV1 text ->
+                        convertGpsV1ToGpsCoordinate text
+
+                    GpsV2 tuple ->
+                        tuple -- No conversion needed here
+            )
+            (\value -> GpsV2 value)
 ```

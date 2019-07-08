@@ -1,5 +1,5 @@
 module Codec exposing
-    ( Codec
+    ( Codec, Endianness, Encoder, Bytes
     , Decoder, decoder, decodeValue
     , encoder, encodeToValue
     , string, bool, char, signedInt, unsignedInt, float64, float32, signedInt32, unsignedInt32, signedInt16, unsignedInt16, signedInt8, unsignedInt8
@@ -8,9 +8,7 @@ module Codec exposing
     , CustomCodec, custom, variant0, variant1, variant2, variant3, variant4, variant5, buildCustom
     , map
     , constant, recursive
-    ,  Encoder
-       --, variant6, variant7, variant8
-
+    --, variant6, variant7, variant8
     )
 
 {-| A `Codec a` contains a `Bytes.Decoder a` and the corresponding `a -> Bytes.Encoder`.
@@ -18,7 +16,7 @@ module Codec exposing
 
 # Definition
 
-@docs Codec, Value, Error
+@docs Codec, Endianness, Encoder, Bytes
 
 
 # Decode
@@ -43,7 +41,7 @@ module Codec exposing
 
 # Object Primitives
 
-@docs ObjectCodec, object, field, optionalField, buildObject
+@docs ObjectCodec, object, field, buildObject
 
 
 # Custom Types
@@ -63,7 +61,7 @@ module Codec exposing
 -}
 
 import Array exposing (Array)
-import Bytes exposing (Bytes, Endianness)
+import Bytes
 import Bytes.Decode as BD
 import Bytes.Encode as BE
 import Dict exposing (Dict)
@@ -89,13 +87,22 @@ type alias Encoder =
     BE.Encoder
 
 
-{-| The direction bytes are ordered. Refer to [the elm/bytes docs][endianness] for more information.
+{-| The direction bytes are ordered in memory. Refer to the [elm/bytes docs][endianness] for more information.
 
-[endianness]: http://www.ietf.org/rfc/ien/ien137.txt
+[endianness]: https://package.elm-lang.org/packages/elm/bytes/latest/Bytes#Endianness
 
 -}
 type alias Endianness =
     Bytes.Endianness
+
+
+{-| A sequence of bytes. Refer to the [elm/bytes docs][bytes] for more information.
+
+[bytes]: https://package.elm-lang.org/packages/elm/bytes/latest/Bytes#Bytes
+
+-}
+type alias Bytes =
+    Bytes.Bytes
 
 
 
