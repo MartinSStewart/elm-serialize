@@ -263,14 +263,14 @@ unsignedInt8 =
     base BE.unsignedInt8 BD.unsignedInt8
 
 
-{-| `Codec` between a 64-bit floating and an Elm `Float`
+{-| `Codec` between a 64-bit float and an Elm `Float`
 -}
 float64 : Codec Float
 float64 =
     base (BE.float64 endian) (BD.float64 endian)
 
 
-{-| `Codec` between a 32-bit floating and an Elm `Float`.
+{-| `Codec` between a 32-bit float and an Elm `Float`.
 Due to Elm `Float`s being 64-bit, encoding and decoding it as a 32-bit float won't exactly equal the original value.
 -}
 float32 : Codec Float
@@ -460,6 +460,19 @@ type ObjectCodec a b
 
 {-| Start creating a `Codec` for an object. You should pass the main constructor as argument.
 If you don't have one (for example it's a simple type with no name), you should pass a function that given the field values builds an object.
+
+    type alias Point =
+        { x : Int
+        , y : Int
+        }
+
+    pointCodec : Codec Point
+    pointCodec =
+        Codec.object Point
+            |> Codec.field .x Codec.signedInt
+            |> Codec.field .y Codec.signedInt
+            |> Codec.buildObject
+
 -}
 object : b -> ObjectCodec a b
 object ctor =
@@ -469,7 +482,7 @@ object ctor =
         }
 
 
-{-| Specify the id getter and `Codec` for a field.
+{-| Specify how to get a value from the object we want to encode and then give a `Codec` for that value.
 -}
 field : (a -> f) -> Codec f -> ObjectCodec a (f -> b) -> ObjectCodec a b
 field getter codec (ObjectCodec ocodec) =
@@ -504,7 +517,32 @@ type CustomCodec match v
 
 
 {-| Starts building a `Codec` for a custom type.
-You need to pass a pattern matching function, see the examples and FAQ for details.
+You need to pass a pattern matching function, see the FAQ for details.
+
+    type Semaphore
+        = Red Int String Bool
+        | Yellow Float
+        | Green
+
+    semaphoreCodec : Codec Semaphore
+    semaphoreCodec =
+        Codec.custom
+            (\fred fyellow fgreen value ->
+                case value of
+                    Red i s b ->
+                        fred i s b
+
+                    Yellow f ->
+                        fyellow f
+
+                    Green ->
+                        fgreen
+            )
+            |> Codec.variant3 0 Red Codec.signedInt Codec.string Codec.bool
+            |> Codec.variant1 1 Yellow Codec.float64
+            |> Codec.variant0 2 Green
+            |> Codec.buildCustom
+
 -}
 custom : match -> CustomCodec match value
 custom match =
@@ -681,11 +719,6 @@ variant5 id ctor m1 m2 m3 m4 m5 =
         )
 
 
-mapNext : Decoder a -> (a -> b) -> Decoder b
-mapNext decoder_ a =
-    BD.map a decoder_
-
-
 {-| Define a variant with 6 parameters for a custom type.
 -}
 variant6 :
@@ -846,7 +879,19 @@ map go back codec =
 
 
 {-| Create a `Codec` for a recursive data structure.
-The argument to the function you need to pass is the fully formed `Codec`.
+The argument to the function you need to pass is the fully formed `Codec`, see the FAQ for details.
+
+    type Peano
+        = Peano (Maybe Peano)
+
+    peanoCodec : Codec Peano
+    peanoCodec =
+        Codec.recursive
+            (\finishedCodec ->
+                Codec.maybe finishedCodec
+                    |> Codec.map Peano (\(Peano p) -> p)
+            )
+
 -}
 recursive : (Codec a -> Codec a) -> Codec a
 recursive f =

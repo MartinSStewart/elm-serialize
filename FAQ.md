@@ -66,6 +66,34 @@ semaphoreCodec =
         |> Codec.buildCustom
 ```
 
+A second example combining `recursive` and `custom`:
+
+```elm
+type Tree a
+    = Node (List (Tree a))
+    | Leaf a
+
+
+treeCodec : Codec a -> Codec (Tree a)
+treeCodec meta =
+    Codec.recursive
+        (\rmeta ->
+            let
+                match fnode fleaf tree =
+                    case tree of
+                        Node cs ->
+                            fnode cs
+
+                        Leaf x ->
+                            fleaf x
+            in
+            Codec.custom match
+                |> Codec.variant1 0 Node (Codec.list rmeta)
+                |> Codec.variant1 1 Leaf meta
+                |> Codec.buildCustom
+        )
+```
+
 ## If there's no `oneOf` or `optionalField`, how is versioning done?
 If you want your `Codec`s to evolve over time and still be able to decode old 
 encoded data, the recommended approach is to treat the different versions as a custom type.
@@ -117,3 +145,4 @@ gpsCodec =
             )
             (\value -> GpsV2 value)
 ```
+
