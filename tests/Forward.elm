@@ -2,7 +2,7 @@ module Forward exposing (suite)
 
 import Base
 import Bytes.Decode as JD
-import Codec exposing (Codec)
+import Codec.Bytes as Codec exposing (Codec)
 import Dict
 import Expect exposing (Expectation)
 import Fuzz exposing (Fuzzer)

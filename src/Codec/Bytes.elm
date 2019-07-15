@@ -1,4 +1,4 @@
-module Codec exposing
+module Codec.Bytes exposing
     ( Codec, Endianness, Encoder, Bytes
     , Decoder, decoder, decodeValue
     , encoder, encodeToValue

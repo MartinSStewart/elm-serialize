@@ -12,9 +12,10 @@ When the function you pass to `recursive` is called the argument is the finished
 An example may be worth a thousand words:
 
 ```elm
+import Codec.Bytes as Codec exposing (Codec)
+
 type Peano
     = Peano (Maybe Peano)
-
 
 peanoCodec : Codec Peano
 peanoCodec =
@@ -40,11 +41,12 @@ You end with a call to `buildCustom`.
 An example:
 
 ```elm
+import Codec.Bytes as Codec exposing (Codec)
+
 type Semaphore
     = Red Int String Bool
     | Yellow Float
     | Green
-
 
 semaphoreCodec : Codec Semaphore
 semaphoreCodec =
@@ -69,10 +71,11 @@ semaphoreCodec =
 A second example combining `recursive` and `custom`:
 
 ```elm
+import Codec.Bytes as Codec exposing (Codec)
+
 type Tree a
     = Node (List (Tree a))
     | Leaf a
-
 
 treeCodec : Codec a -> Codec (Tree a)
 treeCodec meta =
@@ -101,24 +104,22 @@ Then you can write a `custom` Codec for those possible versions and use `map` to
 
 An example:
 ```elm
+import Codec.Bytes as Codec exposing (Codec)
+
 {-| The gps coordinate we use internally in our application
 -}
 type alias GpsCoordinate =
     ( Float, Float )
 
-
 type GpsVersions
     = GpsV1 String -- Old naive way of storing GPS coordinates
     | GpsV2 ( Float, Float ) -- New better way
 
-
 gpsV1Codec =
     Codec.string
 
-
 gpsV2Codec =
     Codec.tuple Codec.float64 Codec.float64
-
 
 gpsCodec : Codec GpsCoordinate
 gpsCodec =

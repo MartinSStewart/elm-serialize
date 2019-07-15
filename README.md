@@ -12,12 +12,10 @@ Using this package will greatly reduce the risk of unmatched encoders and decode
 
 The packages re-exposes the `Encoder`, `Decoder`, `Bytes`, and `Endianness` types from `elm/bytes`, so you don't need to import them too.
 
-## Examples
-
-### Basic usage
+## Basic usage
 
 ```elm
-import Codec exposing (Bytes, Codec, Encoder)
+import Codec.Bytes as Codec exposing (Bytes, Codec, Encoder)
 
 codec : Codec (List Int)
 codec =
