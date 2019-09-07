@@ -8,6 +8,7 @@ module Codec.Bytes exposing
     , CustomCodec, custom, variant0, variant1, variant2, variant3, variant4, variant5, variant6, variant7, variant8, buildCustom
     , map
     , constant, recursive, customWithIdCodec
+    , andThen, lazy
     )
 
 {-| A `Codec a` contains a `Bytes.Decoder a` and the corresponding `a -> Bytes.Encoder`.
@@ -155,8 +156,8 @@ encodeToValue codec value =
 -- BASE
 
 
-base : (a -> Encoder) -> Decoder a -> Codec a
-base encoder_ decoder_ =
+build : (a -> Encoder) -> Decoder a -> Codec a
+build encoder_ decoder_ =
     Codec
         { encoder = encoder_
         , decoder = decoder_
@@ -167,7 +168,7 @@ base encoder_ decoder_ =
 -}
 string : Codec String
 string =
-    base
+    build
         (\text ->
             BE.sequence
                 [ BE.unsignedInt32 endian (String.length text)
@@ -181,7 +182,7 @@ string =
 -}
 bool : Codec Bool
 bool =
-    base
+    build
         (\value ->
             if value then
                 BE.unsignedInt8 1
@@ -225,49 +226,49 @@ unsignedInt =
 -}
 signedInt32 : Endianness -> Codec Int
 signedInt32 endianness =
-    base (BE.signedInt32 endianness) (BD.signedInt32 endianness)
+    build (BE.signedInt32 endianness) (BD.signedInt32 endianness)
 
 
 {-| `Codec` between an unsigned 32-bit integer and an Elm `Int`
 -}
 unsignedInt32 : Endianness -> Codec Int
 unsignedInt32 endianness =
-    base (BE.unsignedInt32 endianness) (BD.unsignedInt32 endianness)
+    build (BE.unsignedInt32 endianness) (BD.unsignedInt32 endianness)
 
 
 {-| `Codec` between a signed 16-bit integer and an Elm `Int`
 -}
 signedInt16 : Endianness -> Codec Int
 signedInt16 endianness =
-    base (BE.signedInt16 endianness) (BD.signedInt16 endianness)
+    build (BE.signedInt16 endianness) (BD.signedInt16 endianness)
 
 
 {-| `Codec` between an unsigned 16-bit integer and an Elm `Int`
 -}
 unsignedInt16 : Endianness -> Codec Int
 unsignedInt16 endianness =
-    base (BE.unsignedInt16 endianness) (BD.unsignedInt16 endianness)
+    build (BE.unsignedInt16 endianness) (BD.unsignedInt16 endianness)
 
 
 {-| `Codec` between a signed 8-bit integer and an Elm `Int`
 -}
 signedInt8 : Codec Int
 signedInt8 =
-    base BE.signedInt8 BD.signedInt8
+    build BE.signedInt8 BD.signedInt8
 
 
 {-| `Codec` between an unsigned 8-bit integer and an Elm `Int`
 -}
 unsignedInt8 : Codec Int
 unsignedInt8 =
-    base BE.unsignedInt8 BD.unsignedInt8
+    build BE.unsignedInt8 BD.unsignedInt8
 
 
 {-| `Codec` between a 64-bit float and an Elm `Float`
 -}
 float64 : Codec Float
 float64 =
-    base (BE.float64 endian) (BD.float64 endian)
+    build (BE.float64 endian) (BD.float64 endian)
 
 
 {-| `Codec` between a 32-bit float and an Elm `Float`.
@@ -275,14 +276,14 @@ Due to Elm `Float`s being 64-bit, encoding and decoding it as a 32-bit float won
 -}
 float32 : Codec Float
 float32 =
-    base (BE.float32 endian) (BD.float32 endian)
+    build (BE.float32 endian) (BD.float32 endian)
 
 
 {-| `Codec` between a sequence of bytes and an Elm `Char`
 -}
 char : Codec Char
 char =
-    base
+    build
         (String.fromChar >> encoder string)
         (decoder string
             |> BD.andThen
@@ -292,14 +293,6 @@ char =
 
 
 -- DATA STRUCTURES
-
-
-build : ((b -> Encoder) -> (a -> Encoder)) -> (Decoder b -> Decoder a) -> Codec b -> Codec a
-build enc dec (Codec codec) =
-    Codec
-        { encoder = enc codec.encoder
-        , decoder = dec codec.decoder
-        }
 
 
 {-| Represents an optional value.
@@ -878,6 +871,16 @@ map go back codec =
 -- FANCY
 
 
+{-| Create codecs that depend on previous results.
+-}
+andThen : (b -> a) -> (a -> Codec b) -> Codec a -> Codec b
+andThen enc dec c =
+    Codec
+        { decoder = decoder c |> BD.andThen (dec >> decoder)
+        , encoder = encoder c << enc
+        }
+
+
 {-| Create a `Codec` for a recursive data structure.
 The argument to the function you need to pass is the fully formed `Codec`, see the FAQ for details.
 
@@ -902,6 +905,17 @@ recursive f =
             }
     in
     f <| Codec step
+
+
+{-| This is useful for recursive structures that are not easily modeled with `recursive`.
+Have a look at the Json.Decode docs for examples.
+-}
+lazy : (() -> Codec a) -> Codec a
+lazy f =
+    Codec
+        { decoder = BD.succeed () |> BD.andThen (\() -> decoder (f ()))
+        , encoder = \value -> encoder (f ()) value
+        }
 
 
 {-| Same as `custom` but here we can choose what codec to use for the integer id we tell apart variants with.
