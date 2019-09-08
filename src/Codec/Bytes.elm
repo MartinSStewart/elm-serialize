@@ -7,8 +7,8 @@ module Codec.Bytes exposing
     , ObjectCodec, object, field, buildObject
     , CustomCodec, custom, variant0, variant1, variant2, variant3, variant4, variant5, variant6, variant7, variant8, buildCustom
     , map
-    , constant, recursive, customWithIdCodec
-    , andThen, lazy
+    , build, constant, recursive, customWithIdCodec
+    , lazy
     )
 
 {-| A `Codec a` contains a `Bytes.Decoder a` and the corresponding `a -> Bytes.Encoder`.
@@ -56,7 +56,7 @@ module Codec.Bytes exposing
 
 # Fancy Codecs
 
-@docs constant, recursive, customWithIdCodec
+@docs build, constant, recursive, customWithIdCodec
 
 -}
 
@@ -871,16 +871,6 @@ map go back codec =
 -- FANCY
 
 
-{-| Create codecs that depend on previous results.
--}
-andThen : (b -> a) -> (a -> Codec b) -> Codec a -> Codec b
-andThen enc dec c =
-    Codec
-        { decoder = decoder c |> BD.andThen (dec >> decoder)
-        , encoder = encoder c << enc
-        }
-
-
 {-| Create a `Codec` for a recursive data structure.
 The argument to the function you need to pass is the fully formed `Codec`, see the FAQ for details.
 
@@ -908,7 +898,6 @@ recursive f =
 
 
 {-| This is useful for recursive structures that are not easily modeled with `recursive`.
-Have a look at the Json.Decode docs for examples.
 -}
 lazy : (() -> Codec a) -> Codec a
 lazy f =
