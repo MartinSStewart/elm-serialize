@@ -2,13 +2,12 @@ module Codec.Bytes exposing
     ( Codec, Endianness, Encoder, Bytes
     , Decoder, decoder, decodeValue
     , encoder, encodeToValue
-    , string, bool, char, signedInt, unsignedInt, float64, float32, signedInt32, unsignedInt32, signedInt16, unsignedInt16, signedInt8, unsignedInt8
+    , string, bool, char, signedInt, unsignedInt, float64, float32, signedInt32, unsignedInt32, signedInt16, unsignedInt16, signedInt8, unsignedInt8, bytes
     , maybe, list, array, dict, set, tuple, triple, result
     , ObjectCodec, object, field, buildObject
     , CustomCodec, custom, variant0, variant1, variant2, variant3, variant4, variant5, variant6, variant7, variant8, buildCustom
-    , map
-    , constant, recursive, customWithIdCodec
-    , andThen, bytes, lazy
+    , map, andThen
+    , constant, lazy, recursive, customWithIdCodec
     )
 
 {-| A `Codec a` contains a `Bytes.Decoder a` and the corresponding `a -> Bytes.Encoder`.
@@ -31,7 +30,7 @@ module Codec.Bytes exposing
 
 # Primitives
 
-@docs string, bool, char, signedInt, unsignedInt, float64, float32, signedInt32, unsignedInt32, signedInt16, unsignedInt16, signedInt8, unsignedInt8
+@docs string, bool, char, signedInt, unsignedInt, float64, float32, signedInt32, unsignedInt32, signedInt16, unsignedInt16, signedInt8, unsignedInt8, bytes
 
 
 # Data Structures
@@ -51,12 +50,12 @@ module Codec.Bytes exposing
 
 # Mapping
 
-@docs map
+@docs map, andThen
 
 
 # Fancy Codecs
 
-@docs build, constant, recursive, customWithIdCodec
+@docs constant, lazy, recursive, customWithIdCodec
 
 -}
 
