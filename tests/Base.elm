@@ -19,6 +19,7 @@ suite =
         , describe "Custom" customTests
         , describe "bimap" bimapTests
         , describe "andThen" andThenTests
+        , describe "lazy" lazyTests
         , describe "maybe" maybeTests
         , describe "constant"
             [ test "roundtrips"
@@ -279,9 +280,47 @@ volumeCodec =
 andThenTests : List Test
 andThenTests =
     [ roundtrips (Fuzz.floatRange 0 1) <| volumeCodec
-    , test "andThen fails on invalid binary data."
-        (\_ -> 5 |> Codec.encodeToValue volumeCodec |> Codec.decodeValue volumeCodec |> Expect.equal Nothing)
+    , test "andThen fails on invalid binary data." <|
+        \_ -> 5 |> Codec.encodeToValue volumeCodec |> Codec.decodeValue volumeCodec |> Expect.equal Nothing
     ]
+
+
+type Peano
+    = Peano (Maybe Peano)
+
+
+{-| This is the same example used in Codec.recursive but adapted for lazy.
+-}
+peanoCodec : Codec Peano
+peanoCodec =
+    Codec.custom
+        (\func peano ->
+            case peano of
+                Peano maybeValue ->
+                    func maybeValue
+        )
+        |> Codec.variant1 0 Peano (Codec.maybe (Codec.lazy (\() -> peanoCodec)))
+        |> Codec.buildCustom
+
+
+lazyTests : List Test
+lazyTests =
+    [ roundtrips peanoFuzz peanoCodec
+    ]
+
+
+peanoFuzz : Fuzzer Peano
+peanoFuzz =
+    Fuzz.intRange 0 10 |> Fuzz.map (intToPeano Nothing)
+
+
+intToPeano : Maybe Peano -> Int -> Peano
+intToPeano peano value =
+    if value <= 0 then
+        Peano Nothing
+
+    else
+        intToPeano peano (value - 1) |> Just |> Peano
 
 
 maybeTests : List Test

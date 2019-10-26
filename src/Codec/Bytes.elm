@@ -950,6 +950,23 @@ recursive f =
 
 
 {-| This is useful for recursive structures that are not easily modeled with `recursive`.
+
+    type Peano
+        = Peano (Maybe Peano)
+
+    {-| This is the same example used in Codec.recursive but adapted for lazy.
+    -}
+    peanoCodec : Codec Peano
+    peanoCodec =
+        Codec.custom
+            (\func peano ->
+                case peano of
+                    Peano maybeValue ->
+                        func maybeValue
+            )
+            |> Codec.variant1 0 Peano (Codec.maybe (Codec.lazy (\() -> peanoCodec)))
+            |> Codec.buildCustom
+
 -}
 lazy : (() -> Codec a) -> Codec a
 lazy f =
