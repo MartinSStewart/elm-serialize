@@ -7,8 +7,8 @@ module Codec.Bytes exposing
     , ObjectCodec, object, field, buildObject
     , CustomCodec, custom, variant0, variant1, variant2, variant3, variant4, variant5, variant6, variant7, variant8, buildCustom
     , map
-    , build, constant, recursive, customWithIdCodec
-    , lazy
+    , constant, recursive, customWithIdCodec
+    , andThen, bytes, lazy
     )
 
 {-| A `Codec a` contains a `Bytes.Decoder a` and the corresponding `a -> Bytes.Encoder`.
@@ -156,6 +156,9 @@ encodeToValue codec value =
 -- BASE
 
 
+{-| If necessary you can create your own `Codec` directly.
+This should be a measure of last resort though! If you need to encode and decode records and custom types, use `object` and `custom` respectively.
+-}
 build : (a -> Encoder) -> Decoder a -> Codec a
 build encoder_ decoder_ =
     Codec
@@ -436,6 +439,21 @@ result errorCodec valueCodec =
         |> variant1 0 Err errorCodec
         |> variant1 1 Ok valueCodec
         |> buildCustom
+
+
+{-| `Codec` for `Bytes`. This is useful if you wanted to include binary data that you're going to decode elsewhere such as a PNG file.
+-}
+bytes : Codec Bytes
+bytes =
+    Codec
+        { encoder =
+            \bytes_ ->
+                BE.sequence
+                    [ BE.unsignedInt32 endian (Bytes.width bytes_)
+                    , BE.bytes bytes_
+                    ]
+        , decoder = BD.unsignedInt32 endian |> BD.andThen (\length -> BD.bytes length)
+        }
 
 
 
@@ -860,10 +878,45 @@ buildCustom (CustomCodec am) =
 {-| Transform a `Codec`.
 -}
 map : (a -> b) -> (b -> a) -> Codec a -> Codec b
-map go back codec =
+map fromBytes toBytes codec =
     Codec
-        { decoder = BD.map go <| decoder codec
-        , encoder = \v -> back v |> encoder codec
+        { decoder = BD.map fromBytes <| decoder codec
+        , encoder = \v -> toBytes v |> encoder codec
+        }
+
+
+{-| Transform a `Codec` in a way that can potentially fail when decoding.
+
+    {-| Volume must be between 0 and 1.
+    -}
+    volumeCodec =
+        Codec.float64
+            |> Codec.andThen
+                (\volume ->
+                    if volume <= 1 && volume >= 0 then
+                        Just volume
+
+                    else
+                        Nothing
+                )
+                (\volume -> volume)
+
+-}
+andThen : (a -> Maybe b) -> (b -> a) -> Codec a -> Codec b
+andThen fromBytes toBytes codec =
+    Codec
+        { decoder =
+            decoder codec
+                |> BD.andThen
+                    (\value ->
+                        case fromBytes value of
+                            Just newValue ->
+                                BD.succeed newValue
+
+                            Nothing ->
+                                BD.fail
+                    )
+        , encoder = \v -> toBytes v |> encoder codec
         }
 
 

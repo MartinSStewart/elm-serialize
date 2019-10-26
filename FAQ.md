@@ -1,9 +1,11 @@
 ## What's different between this and miniBill/elm-codec?
 Besides the fact that this package is designed for `elm/bytes` instead of `elm/json` other notable differences are:
 * `variantX` functions use `Int` instead of `String` for telling apart different constructors
-* `CustomObject` fields aren't given names but their order matters 
+* `CustomObject` fields aren't given names and their order matters 
 * There is no `oneOf` or `optionalField` in this package
 * There are more ways to encode elm `int` and `float` values (i.e. `signedInt`, `unsignedInt`, `float32`, `float64`)
+* `andThen` is less flexible here for the sake of a nicer API
+* `build` is not exposed
 
 ## How do you use `recursive`?
 The trick to understanding the `recursive` codec is: pretend you are already done.

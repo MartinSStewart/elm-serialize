@@ -12,7 +12,7 @@ import Test exposing (Test, describe, fuzz, test)
 
 suite : Test
 suite =
-    describe "Testing forward and backward compat"
+    describe "Testing forward and backward compatability"
         [ describe "Any to constant" anyToConstant
         ]
 

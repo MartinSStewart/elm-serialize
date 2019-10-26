@@ -3,12 +3,15 @@
 This package allows you to build pairs of encoders (`a -> Encoder`) and decoders (`Decoder a`) for a sequence of bytes, collectively called a `Codec a`.
 
 It is inspired by `miniBill/elm-codec` and reuses much of the API. 
-It's not quite a drop in replacement however, see `FAQ.md` for a list of differences.
+It's not a drop in replacement however, see `FAQ.md` for a list of differences.
 
 ## Design Goals
 
 The design goal is to be as type safe as possible while keeping a nice API.
-Using this package will greatly reduce the risk of unmatched encoders and decoders.
+Using this package will greatly reduce the risk of unmatched encoders and decoders for Elm values.
+
+A drawback of this approach is that foreign binary formats won't easy to write codecs for (if at all).
+This package is best for round tripping Elm data structures.
 
 The packages re-exposes the `Encoder`, `Decoder`, `Bytes`, and `Endianness` types from `elm/bytes`, so you don't need to import them too.
 

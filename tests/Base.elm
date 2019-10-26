@@ -1,7 +1,8 @@
 module Base exposing (roundtrips, suite)
 
+import Bytes
 import Bytes.Encode
-import Codec.Bytes as Codec exposing (Codec)
+import Codec.Bytes as Codec exposing (Bytes, Codec)
 import Dict
 import Expect exposing (Expectation)
 import Fuzz exposing (Fuzzer)
@@ -17,6 +18,7 @@ suite =
         , describe "Object" objectTests
         , describe "Custom" customTests
         , describe "bimap" bimapTests
+        , describe "andThen" andThenTests
         , describe "maybe" maybeTests
         , describe "constant"
             [ test "roundtrips"
@@ -74,7 +76,15 @@ basicTests =
     , describe "Codec.char"
         [ roundtrips Fuzz.char Codec.char
         ]
+    , describe "Codec.bytes"
+        [ roundtrips fuzzBytes Codec.bytes
+        ]
     ]
+
+
+fuzzBytes : Fuzzer Bytes
+fuzzBytes =
+    Fuzz.list unsignedInt32Fuzz |> Fuzz.map (List.map (Bytes.Encode.unsignedInt32 Bytes.LE) >> Bytes.Encode.sequence >> Bytes.Encode.encode)
 
 
 containersTests : List Test
@@ -250,6 +260,27 @@ bimapTests =
             (\x -> x * 2)
             (\x -> x / 2)
             Codec.float64
+    ]
+
+
+volumeCodec =
+    Codec.float64
+        |> Codec.andThen
+            (\volume ->
+                if volume <= 1 && volume >= 0 then
+                    Just volume
+
+                else
+                    Nothing
+            )
+            (\volume -> volume)
+
+
+andThenTests : List Test
+andThenTests =
+    [ roundtrips (Fuzz.floatRange 0 1) <| volumeCodec
+    , test "andThen fails on invalid binary data."
+        (\_ -> 5 |> Codec.encodeToValue volumeCodec |> Codec.decodeValue volumeCodec |> Expect.equal Nothing)
     ]
 
 
