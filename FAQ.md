@@ -2,10 +2,8 @@
 Besides the fact that this package is designed for `elm/bytes` instead of `elm/json` other notable differences are:
 * `variantX` functions use `Int` instead of `String` for telling apart different constructors
 * `CustomObject` fields aren't given names and their order matters 
-* There is no `oneOf` or `optionalField` in this package
+* There is no `oneOf`, `optionalField`, `andThen`, or `build` functions
 * There are more ways to encode elm `int` and `float` values (i.e. `signedInt`, `unsignedInt`, `float32`, `float64`)
-* `andThen` is less flexible here for the sake of a nicer API
-* `build` is not exposed
 
 ## How do you use `recursive`?
 The trick to understanding the `recursive` codec is: pretend you are already done.
@@ -80,9 +78,9 @@ type Tree a
     | Leaf a
 
 treeCodec : Codec a -> Codec (Tree a)
-treeCodec meta =
+treeCodec leafCodec =
     Codec.recursive
-        (\rmeta ->
+        (\finishedCodec ->
             let
                 match fnode fleaf tree =
                     case tree of
@@ -93,8 +91,8 @@ treeCodec meta =
                             fleaf x
             in
             Codec.custom match
-                |> Codec.variant1 0 Node (Codec.list rmeta)
-                |> Codec.variant1 1 Leaf meta
+                |> Codec.variant1 0 Node (Codec.list finishedCodec)
+                |> Codec.variant1 1 Leaf leafCodec
                 |> Codec.buildCustom
         )
 ```

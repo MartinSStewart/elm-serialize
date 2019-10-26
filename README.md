@@ -1,21 +1,13 @@
 # elm-codec-bytes
 
-This package allows you to build pairs of encoders (`a -> Encoder`) and decoders (`Decoder a`) for a sequence of bytes, collectively called a `Codec a`.
+The goal of this package is to easily convert Elm values to a sequence of 
+bytes and back without failing to decode or ending up with different values.
 
-It is inspired by `miniBill/elm-codec` and reuses much of the API. 
-It's not a drop in replacement however, see `FAQ.md` for a list of differences.
-
-## Design Goals
-
-The design goal is to be as type safe as possible while keeping a nice API.
-Using this package will greatly reduce the risk of unmatched encoders and decoders for Elm values.
-
-A drawback of this approach is that foreign binary formats won't easy to write codecs for (if at all).
-This package is best for round tripping Elm data structures.
-
-The packages re-exposes the `Encoder`, `Decoder`, `Bytes`, and `Endianness` types from `elm/bytes`, so you don't need to import them too.
+Note that this package is _not_ appropriate if you want to handle an external binary format.
 
 ## Basic usage
+
+Round-tripping is done through the use of encoders (`a -> Encoder`) and decoders (`Decoder a`) for a sequence of bytes, collectively called a `Codec a`.
 
 ```elm
 import Codec.Bytes as Codec exposing (Bytes, Codec, Encoder)
@@ -38,3 +30,8 @@ decode s =
 Ask for help on the [Elm Slack](https://elmlang.herokuapp.com/).
 
 You can also have a look at the `FAQ.md` file.
+
+## Credits
+
+This package is inspired by `miniBill/elm-codec` and reuses much of the API. 
+It's not a drop in replacement however, see `FAQ.md` for a list of differences.
