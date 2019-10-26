@@ -6,7 +6,7 @@ module Codec.Bytes exposing
     , maybe, list, array, dict, set, tuple, triple, result
     , ObjectCodec, object, field, buildObject
     , CustomCodec, custom, variant0, variant1, variant2, variant3, variant4, variant5, variant6, variant7, variant8, buildCustom
-    , map, andThen
+    , map
     , constant, lazy, recursive, customWithIdCodec
     )
 
@@ -50,7 +50,7 @@ module Codec.Bytes exposing
 
 # Mapping
 
-@docs map, andThen
+@docs map
 
 
 # Fancy Codecs

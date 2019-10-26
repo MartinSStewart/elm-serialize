@@ -18,7 +18,8 @@ suite =
         , describe "Object" objectTests
         , describe "Custom" customTests
         , describe "bimap" bimapTests
-        , describe "andThen" andThenTests
+
+        --, describe "andThen" andThenTests
         , describe "lazy" lazyTests
         , describe "maybe" maybeTests
         , describe "constant"
@@ -264,25 +265,26 @@ bimapTests =
     ]
 
 
-volumeCodec =
-    Codec.float64
-        |> Codec.andThen
-            (\volume ->
-                if volume <= 1 && volume >= 0 then
-                    Just volume
 
-                else
-                    Nothing
-            )
-            (\volume -> volume)
-
-
-andThenTests : List Test
-andThenTests =
-    [ roundtrips (Fuzz.floatRange 0 1) <| volumeCodec
-    , test "andThen fails on invalid binary data." <|
-        \_ -> 5 |> Codec.encodeToValue volumeCodec |> Codec.decodeValue volumeCodec |> Expect.equal Nothing
-    ]
+--volumeCodec =
+--    Codec.float64
+--        |> Codec.andThen
+--            (\volume ->
+--                if volume <= 1 && volume >= 0 then
+--                    Just volume
+--
+--                else
+--                    Nothing
+--            )
+--            (\volume -> volume)
+--
+--
+--andThenTests : List Test
+--andThenTests =
+--    [ roundtrips (Fuzz.floatRange 0 1) <| volumeCodec
+--    , test "andThen fails on invalid binary data." <|
+--        \_ -> 5 |> Codec.encodeToValue volumeCodec |> Codec.decodeValue volumeCodec |> Expect.equal Nothing
+--    ]
 
 
 type Peano
