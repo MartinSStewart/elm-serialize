@@ -958,14 +958,7 @@ recursive f =
     -}
     peanoCodec : Codec Peano
     peanoCodec =
-        Codec.custom
-            (\func peano ->
-                case peano of
-                    Peano maybeValue ->
-                        func maybeValue
-            )
-            |> Codec.variant1 0 Peano (Codec.maybe (Codec.lazy (\() -> peanoCodec)))
-            |> Codec.buildCustom
+        Codec.maybe (Codec.lazy (\() -> peanoCodec)) |> Codec.map Peano (\(Peano a) -> a)
 
 -}
 lazy : (() -> Codec a) -> Codec a
