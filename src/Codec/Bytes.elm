@@ -887,16 +887,22 @@ andThen fromBytes toBytes codec =
 -- FANCY
 
 
-{-| This is useful for recursive structures that are not easily modeled with `recursive`.
+{-| Handle situations where you need to define a codec in terms of itself.
 
     type Peano
         = Peano (Maybe Peano)
 
-    {-| This is the same example used in Codec.recursive but adapted for lazy.
+    {-| The compiler will complain that this function causes an infinite loop.
     -}
-    peanoCodec : Codec Peano
-    peanoCodec =
-        Codec.maybe (Codec.lazy (\() -> peanoCodec)) |> Codec.map Peano (\(Peano a) -> a)
+    badPeanoCodec : Codec Peano
+    badPeanoCodec =
+        Codec.maybe badPeanoCodec |> Codec.map Peano (\(Peano a) -> a)
+
+    {-| Now the compiler is happy!
+    -}
+    goodPeanoCodec : Codec Peano
+    goodPeanoCodec =
+        Codec.maybe (Codec.lazy (\() -> goodPeanoCodec)) |> Codec.map Peano (\(Peano a) -> a)
 
 -}
 lazy : (() -> Codec a) -> Codec a
