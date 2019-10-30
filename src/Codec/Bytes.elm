@@ -276,7 +276,8 @@ char =
 -}
 maybe : Codec a -> Codec (Maybe a)
 maybe codec =
-    custom
+    customWithIdCodec
+        unsignedInt8
         (\nothingEncoder justEncoder value ->
             case value of
                 Nothing ->
