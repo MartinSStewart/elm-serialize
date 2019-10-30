@@ -22,8 +22,8 @@ compatible fuzzer map oldCodec newCodec =
     fuzz fuzzer "compatible" <|
         \value ->
             value
-                |> Codec.encodeToValue oldCodec
-                |> Codec.decodeValue newCodec
+                |> Codec.encode oldCodec
+                |> Codec.decode newCodec
                 |> Expect.equal (Just <| map value)
 
 

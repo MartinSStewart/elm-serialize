@@ -1,13 +1,13 @@
 module Codec.Bytes exposing
     ( Codec, Encoder, Bytes
-    , Decoder, decoder, decodeValue
-    , encoder, encodeToValue
+    , Decoder
     , string, bool, char, float64, float32, signedInt32, unsignedInt32, signedInt16, unsignedInt16, signedInt8, unsignedInt8, bytes
     , maybe, list, array, dict, set, tuple, triple, result
     , ObjectCodec, object, field, buildObject
     , CustomCodec, custom, variant0, variant1, variant2, variant3, variant4, variant5, variant6, variant7, variant8, buildCustom
     , map
     , constant, lazy, customWithIdCodec
+    , decode, encode, getDecoder, getEncoder
     )
 
 {-| A `Codec a` contains a `Bytes.Decoder a` and the corresponding `a -> Bytes.Encoder`.
@@ -112,16 +112,16 @@ endian =
 
 {-| Extracts the `Decoder` contained inside the `Codec`.
 -}
-decoder : Codec a -> Decoder a
-decoder (Codec m) =
+getDecoder : Codec a -> Decoder a
+getDecoder (Codec m) =
     m.decoder
 
 
 {-| Run a `Codec` to turn a sequence of bytes into an Elm value.
 -}
-decodeValue : Codec a -> Bytes -> Maybe a
-decodeValue codec =
-    BD.decode (decoder codec)
+decode : Codec a -> Bytes -> Maybe a
+decode codec =
+    BD.decode (getDecoder codec)
 
 
 
@@ -130,16 +130,16 @@ decodeValue codec =
 
 {-| Extracts the encoding function contained inside the `Codec`.
 -}
-encoder : Codec a -> a -> Encoder
-encoder (Codec m) =
+getEncoder : Codec a -> a -> Encoder
+getEncoder (Codec m) =
     m.encoder
 
 
 {-| Convert an Elm value into a sequence of bytes.
 -}
-encodeToValue : Codec a -> a -> Bytes
-encodeToValue codec value =
-    encoder codec value |> BE.encode
+encode : Codec a -> a -> Bytes
+encode codec value =
+    getEncoder codec value |> BE.encode
 
 
 
@@ -261,8 +261,8 @@ float32 =
 char : Codec Char
 char =
     build
-        (String.fromChar >> encoder string)
-        (decoder string
+        (String.fromChar >> getEncoder string)
+        (getDecoder string
             |> BD.andThen
                 (String.toList >> List.head >> Maybe.map BD.succeed >> Maybe.withDefault BD.fail)
         )
@@ -276,33 +276,18 @@ char =
 -}
 maybe : Codec a -> Codec (Maybe a)
 maybe codec =
-    Codec
-        { decoder =
-            BD.unsignedInt8
-                |> BD.andThen
-                    (\value ->
-                        case value of
-                            0 ->
-                                BD.succeed Nothing
+    custom
+        (\nothingEncoder justEncoder value ->
+            case value of
+                Nothing ->
+                    nothingEncoder
 
-                            1 ->
-                                decoder codec |> BD.map Just
-
-                            _ ->
-                                BD.fail
-                    )
-        , encoder =
-            \v ->
-                case v of
-                    Nothing ->
-                        BE.unsignedInt8 0
-
-                    Just x ->
-                        BE.sequence
-                            [ BE.unsignedInt8 1
-                            , encoder codec x
-                            ]
-        }
+                Just value_ ->
+                    justEncoder value_
+        )
+        |> variant0 0 Nothing
+        |> variant1 1 Just codec
+        |> buildCustom
 
 
 {-| `Codec` between a sequence of bytes and an Elm `List`.
@@ -310,11 +295,11 @@ maybe codec =
 list : Codec a -> Codec (List a)
 list codec =
     Codec
-        { encoder = listEncode (encoder codec)
+        { encoder = listEncode (getEncoder codec)
         , decoder =
             BD.unsignedInt32 endian
                 |> BD.andThen
-                    (\length -> BD.loop ( length, [] ) (listStep (decoder codec)))
+                    (\length -> BD.loop ( length, [] ) (listStep (getDecoder codec)))
         }
 
 
@@ -365,14 +350,14 @@ tuple m1 m2 =
         { encoder =
             \( v1, v2 ) ->
                 BE.sequence
-                    [ encoder m1 v1
-                    , encoder m2 v2
+                    [ getEncoder m1 v1
+                    , getEncoder m2 v2
                     ]
         , decoder =
             BD.map2
                 (\a b -> ( a, b ))
-                (decoder m1)
-                (decoder m2)
+                (getDecoder m1)
+                (getDecoder m2)
         }
 
 
@@ -384,16 +369,16 @@ triple m1 m2 m3 =
         { encoder =
             \( v1, v2, v3 ) ->
                 BE.sequence
-                    [ encoder m1 v1
-                    , encoder m2 v2
-                    , encoder m3 v3
+                    [ getEncoder m1 v1
+                    , getEncoder m2 v2
+                    , getEncoder m3 v3
                     ]
         , decoder =
             BD.map3
                 (\a b c -> ( a, b, c ))
-                (decoder m1)
-                (decoder m2)
-                (decoder m3)
+                (getDecoder m1)
+                (getDecoder m2)
+                (getDecoder m3)
         }
 
 
@@ -402,13 +387,13 @@ triple m1 m2 m3 =
 result : Codec error -> Codec value -> Codec (Result error value)
 result errorCodec valueCodec =
     custom
-        (\ferr fok value ->
+        (\errEncoder okEncoder value ->
             case value of
                 Err err ->
-                    ferr err
+                    errEncoder err
 
                 Ok ok ->
-                    fok ok
+                    okEncoder ok
         )
         |> variant1 0 Err errorCodec
         |> variant1 1 Ok valueCodec
@@ -476,8 +461,8 @@ object ctor =
 field : (a -> f) -> Codec f -> ObjectCodec a (f -> b) -> ObjectCodec a b
 field getter codec (ObjectCodec ocodec) =
     ObjectCodec
-        { encoder = \v -> (encoder codec <| getter v) :: ocodec.encoder v
-        , decoder = BD.map2 (\f x -> f x) ocodec.decoder (decoder codec)
+        { encoder = \v -> (getEncoder codec <| getter v) :: ocodec.encoder v
+        , decoder = BD.map2 (\f x -> f x) ocodec.decoder (getDecoder codec)
         }
 
 
@@ -547,7 +532,7 @@ variant :
 variant name matchPiece decoderPiece (CustomCodec am) =
     let
         enc v =
-            encoder am.idCodec name
+            getEncoder am.idCodec name
                 :: v
                 |> BE.sequence
 
@@ -590,11 +575,11 @@ variant1 name ctor m1 =
     variant name
         (\c v ->
             c
-                [ encoder m1 v
+                [ getEncoder m1 v
                 ]
         )
         (BD.map ctor
-            (decoder m1)
+            (getDecoder m1)
         )
 
 
@@ -611,13 +596,13 @@ variant2 id ctor m1 m2 =
     variant id
         (\c v1 v2 ->
             c
-                [ encoder m1 v1
-                , encoder m2 v2
+                [ getEncoder m1 v1
+                , getEncoder m2 v2
                 ]
         )
         (BD.map2 ctor
-            (decoder m1)
-            (decoder m2)
+            (getDecoder m1)
+            (getDecoder m2)
         )
 
 
@@ -635,15 +620,15 @@ variant3 id ctor m1 m2 m3 =
     variant id
         (\c v1 v2 v3 ->
             c
-                [ encoder m1 v1
-                , encoder m2 v2
-                , encoder m3 v3
+                [ getEncoder m1 v1
+                , getEncoder m2 v2
+                , getEncoder m3 v3
                 ]
         )
         (BD.map3 ctor
-            (decoder m1)
-            (decoder m2)
-            (decoder m3)
+            (getDecoder m1)
+            (getDecoder m2)
+            (getDecoder m3)
         )
 
 
@@ -662,17 +647,17 @@ variant4 id ctor m1 m2 m3 m4 =
     variant id
         (\c v1 v2 v3 v4 ->
             c
-                [ encoder m1 v1
-                , encoder m2 v2
-                , encoder m3 v3
-                , encoder m4 v4
+                [ getEncoder m1 v1
+                , getEncoder m2 v2
+                , getEncoder m3 v3
+                , getEncoder m4 v4
                 ]
         )
         (BD.map4 ctor
-            (decoder m1)
-            (decoder m2)
-            (decoder m3)
-            (decoder m4)
+            (getDecoder m1)
+            (getDecoder m2)
+            (getDecoder m3)
+            (getDecoder m4)
         )
 
 
@@ -692,19 +677,19 @@ variant5 id ctor m1 m2 m3 m4 m5 =
     variant id
         (\c v1 v2 v3 v4 v5 ->
             c
-                [ encoder m1 v1
-                , encoder m2 v2
-                , encoder m3 v3
-                , encoder m4 v4
-                , encoder m5 v5
+                [ getEncoder m1 v1
+                , getEncoder m2 v2
+                , getEncoder m3 v3
+                , getEncoder m4 v4
+                , getEncoder m5 v5
                 ]
         )
         (BD.map5 ctor
-            (decoder m1)
-            (decoder m2)
-            (decoder m3)
-            (decoder m4)
-            (decoder m5)
+            (getDecoder m1)
+            (getDecoder m2)
+            (getDecoder m3)
+            (getDecoder m4)
+            (getDecoder m5)
         )
 
 
@@ -725,22 +710,22 @@ variant6 id ctor m1 m2 m3 m4 m5 m6 =
     variant id
         (\c v1 v2 v3 v4 v5 v6 ->
             c
-                [ encoder m1 v1
-                , encoder m2 v2
-                , encoder m3 v3
-                , encoder m4 v4
-                , encoder m5 v5
-                , encoder m6 v6
+                [ getEncoder m1 v1
+                , getEncoder m2 v2
+                , getEncoder m3 v3
+                , getEncoder m4 v4
+                , getEncoder m5 v5
+                , getEncoder m6 v6
                 ]
         )
         (BD.map5 (\a b c d ( e, f ) -> ctor a b c d e f)
-            (decoder m1)
-            (decoder m2)
-            (decoder m3)
-            (decoder m4)
+            (getDecoder m1)
+            (getDecoder m2)
+            (getDecoder m3)
+            (getDecoder m4)
             (BD.map2 Tuple.pair
-                (decoder m5)
-                (decoder m6)
+                (getDecoder m5)
+                (getDecoder m6)
             )
         )
 
@@ -763,26 +748,26 @@ variant7 id ctor m1 m2 m3 m4 m5 m6 m7 =
     variant id
         (\c v1 v2 v3 v4 v5 v6 v7 ->
             c
-                [ encoder m1 v1
-                , encoder m2 v2
-                , encoder m3 v3
-                , encoder m4 v4
-                , encoder m5 v5
-                , encoder m6 v6
-                , encoder m7 v7
+                [ getEncoder m1 v1
+                , getEncoder m2 v2
+                , getEncoder m3 v3
+                , getEncoder m4 v4
+                , getEncoder m5 v5
+                , getEncoder m6 v6
+                , getEncoder m7 v7
                 ]
         )
         (BD.map5 (\a b c ( d, e ) ( f, g ) -> ctor a b c d e f g)
-            (decoder m1)
-            (decoder m2)
-            (decoder m3)
+            (getDecoder m1)
+            (getDecoder m2)
+            (getDecoder m3)
             (BD.map2 Tuple.pair
-                (decoder m4)
-                (decoder m5)
+                (getDecoder m4)
+                (getDecoder m5)
             )
             (BD.map2 Tuple.pair
-                (decoder m6)
-                (decoder m7)
+                (getDecoder m6)
+                (getDecoder m7)
             )
         )
 
@@ -806,30 +791,30 @@ variant8 id ctor m1 m2 m3 m4 m5 m6 m7 m8 =
     variant id
         (\c v1 v2 v3 v4 v5 v6 v7 v8 ->
             c
-                [ encoder m1 v1
-                , encoder m2 v2
-                , encoder m3 v3
-                , encoder m4 v4
-                , encoder m5 v5
-                , encoder m6 v6
-                , encoder m7 v7
-                , encoder m8 v8
+                [ getEncoder m1 v1
+                , getEncoder m2 v2
+                , getEncoder m3 v3
+                , getEncoder m4 v4
+                , getEncoder m5 v5
+                , getEncoder m6 v6
+                , getEncoder m7 v7
+                , getEncoder m8 v8
                 ]
         )
         (BD.map5 (\a b ( c, d ) ( e, f ) ( g, h ) -> ctor a b c d e f g h)
-            (decoder m1)
-            (decoder m2)
+            (getDecoder m1)
+            (getDecoder m2)
             (BD.map2 Tuple.pair
-                (decoder m3)
-                (decoder m4)
+                (getDecoder m3)
+                (getDecoder m4)
             )
             (BD.map2 Tuple.pair
-                (decoder m5)
-                (decoder m6)
+                (getDecoder m5)
+                (getDecoder m6)
             )
             (BD.map2 Tuple.pair
-                (decoder m7)
-                (decoder m8)
+                (getDecoder m7)
+                (getDecoder m8)
             )
         )
 
@@ -841,7 +826,7 @@ buildCustom (CustomCodec am) =
     Codec
         { encoder = \v -> am.match v
         , decoder =
-            decoder am.idCodec
+            getDecoder am.idCodec
                 |> BD.andThen
                     (\tag ->
                         am.decoder tag BD.fail
@@ -858,8 +843,8 @@ buildCustom (CustomCodec am) =
 map : (a -> b) -> (b -> a) -> Codec a -> Codec b
 map fromBytes toBytes codec =
     Codec
-        { decoder = BD.map fromBytes <| decoder codec
-        , encoder = \v -> toBytes v |> encoder codec
+        { decoder = BD.map fromBytes <| getDecoder codec
+        , encoder = \v -> toBytes v |> getEncoder codec
         }
 
 
@@ -884,7 +869,7 @@ andThen : (a -> Maybe b) -> (b -> a) -> Codec a -> Codec b
 andThen fromBytes toBytes codec =
     Codec
         { decoder =
-            decoder codec
+            getDecoder codec
                 |> BD.andThen
                     (\value ->
                         case fromBytes value of
@@ -894,7 +879,7 @@ andThen fromBytes toBytes codec =
                             Nothing ->
                                 BD.fail
                     )
-        , encoder = \v -> toBytes v |> encoder codec
+        , encoder = \v -> toBytes v |> getEncoder codec
         }
 
 
@@ -917,8 +902,8 @@ andThen fromBytes toBytes codec =
 lazy : (() -> Codec a) -> Codec a
 lazy f =
     Codec
-        { decoder = BD.succeed () |> BD.andThen (\() -> decoder (f ()))
-        , encoder = \value -> encoder (f ()) value
+        { decoder = BD.succeed () |> BD.andThen (\() -> getDecoder (f ()))
+        , encoder = \value -> getEncoder (f ()) value
         }
 
 

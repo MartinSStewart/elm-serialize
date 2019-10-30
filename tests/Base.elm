@@ -26,7 +26,7 @@ suite =
             [ test "roundtrips"
                 (\_ ->
                     Codec.constant 632
-                        |> (\d -> Codec.decodeValue d (Bytes.Encode.sequence [] |> Bytes.Encode.encode))
+                        |> (\d -> Codec.decode d (Bytes.Encode.sequence [] |> Bytes.Encode.encode))
                         |> Expect.equal (Just 632)
                 )
             ]
@@ -38,8 +38,8 @@ roundtrips fuzzer codec =
     fuzz fuzzer "is a roundtrip" <|
         \value ->
             value
-                |> Codec.encodeToValue codec
-                |> Codec.decodeValue codec
+                |> Codec.encode codec
+                |> Codec.decode codec
                 |> Expect.equal (Just value)
 
 
@@ -48,8 +48,8 @@ roundtripsWithin fuzzer codec =
     fuzz fuzzer "is a roundtrip" <|
         \value ->
             value
-                |> Codec.encodeToValue codec
-                |> Codec.decodeValue codec
+                |> Codec.encode codec
+                |> Codec.decode codec
                 |> Maybe.withDefault -999.1234567
                 |> Expect.within (Expect.Relative 0.000001) value
 
