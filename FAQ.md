@@ -3,7 +3,8 @@ Besides the fact that this package is designed for `elm/bytes` instead of `elm/j
 * `variantX` functions use `Int` instead of `String` for telling apart different constructors
 * `CustomObject` fields aren't given names and their order matters 
 * There is no `oneOf`, `optionalField`, `andThen`, `recursive` or `build` functions
-* There are more ways to encode elm `int` and `float` values (i.e. `signedInt`, `unsignedInt`, `float32`, `float64`)
+* There are more ways to encode elm `int` and `float` values (i.e. `signedInt32`, `unsignedInt32`, `float32`, `float64`)
+* `decodeValue`, `encodeToValue`, `encoder`, and `decoder` are renamed to `decode`, `encode`, `getEncoder`, `getDecoder` respectively
 
 ## Why does `map` take two opposite functions?
 One is used for the encoder, the other for the decoder
