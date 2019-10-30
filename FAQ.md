@@ -51,16 +51,16 @@ type Semaphore
 semaphoreCodec : Codec Semaphore
 semaphoreCodec =
     Codec.custom
-        (\fred fyellow fgreen value ->
+        (\redEncoder yellowEncoder greenEncoder value ->
             case value of
                 Red i s b ->
-                    fred i s b
+                    redEncoder i s b
 
                 Yellow f ->
-                    fyellow f
+                    yellowEncoder f
 
                 Green ->
-                    fgreen
+                    greenEncoder
         )
         |> Codec.variant3 0 Red Codec.signedInt Codec.string Codec.bool
         |> Codec.variant1 1 Yellow Codec.float64
@@ -82,13 +82,13 @@ treeCodec leafCodec =
     Codec.recursive
         (\finishedCodec ->
             let
-                match fnode fleaf tree =
+                match nodeEncoder leafEncoder tree =
                     case tree of
                         Node cs ->
-                            fnode cs
+                            nodeEncoder cs
 
                         Leaf x ->
-                            fleaf x
+                            leafEncoder x
             in
             Codec.custom match
                 |> Codec.variant1 0 Node (Codec.list finishedCodec)
@@ -124,13 +124,13 @@ gpsV2Codec =
 gpsCodec : Codec GpsCoordinate
 gpsCodec =
     Codec.custom
-        (\fv1 fv2 value ->
+        (\gpsV1Encoder gpsV2Encoder value ->
             case value of
                 GpsV1 text ->
-                    fv1 text
+                    gpsV1Encoder text
 
                 GpsV2 tuple ->
-                    fv2 tuple
+                    gpsV2Encoder tuple
         )
         |> Codec.variant1 1 GpsV1 gpsV1Codec
         |> Codec.variant1 2 GpsV2 gpsV2Codec

@@ -537,16 +537,16 @@ You need to pass a pattern matching function, see the FAQ for details.
     semaphoreCodec : Codec Semaphore
     semaphoreCodec =
         Codec.custom
-            (\fred fyellow fgreen value ->
+            (\redEncoder yellowEncoder greenEncoder value ->
                 case value of
                     Red i s b ->
-                        fred i s b
+                        redEncoder i s b
 
                     Yellow f ->
-                        fyellow f
+                        yellowEncoder f
 
                     Green ->
-                        fgreen
+                        greenEncoder
             )
             |> Codec.variant3 0 Red Codec.signedInt Codec.string Codec.bool
             |> Codec.variant1 1 Yellow Codec.float64
