@@ -1,13 +1,13 @@
 module Codec.Bytes exposing
-    ( Codec, Endianness, Encoder, Bytes
+    ( Codec, Encoder, Bytes
     , Decoder, decoder, decodeValue
     , encoder, encodeToValue
-    , string, bool, char, signedInt, unsignedInt, float64, float32, signedInt32, unsignedInt32, signedInt16, unsignedInt16, signedInt8, unsignedInt8, bytes
+    , string, bool, char, float64, float32, signedInt32, unsignedInt32, signedInt16, unsignedInt16, signedInt8, unsignedInt8, bytes
     , maybe, list, array, dict, set, tuple, triple, result
     , ObjectCodec, object, field, buildObject
     , CustomCodec, custom, variant0, variant1, variant2, variant3, variant4, variant5, variant6, variant7, variant8, buildCustom
     , map
-    , constant, lazy, recursive, customWithIdCodec
+    , constant, lazy, customWithIdCodec
     )
 
 {-| A `Codec a` contains a `Bytes.Decoder a` and the corresponding `a -> Bytes.Encoder`.
@@ -30,7 +30,7 @@ module Codec.Bytes exposing
 
 # Primitives
 
-@docs string, bool, char, signedInt, unsignedInt, float64, float32, signedInt32, unsignedInt32, signedInt16, unsignedInt16, signedInt8, unsignedInt8, bytes
+@docs string, bool, char, float64, float32, signedInt32, unsignedInt32, signedInt16, unsignedInt16, signedInt8, unsignedInt8, bytes
 
 
 # Data Structures
@@ -55,7 +55,7 @@ module Codec.Bytes exposing
 
 # Fancy Codecs
 
-@docs constant, lazy, recursive, customWithIdCodec
+@docs constant, lazy, customWithIdCodec
 
 -}
 
@@ -86,15 +86,6 @@ type alias Encoder =
     BE.Encoder
 
 
-{-| The direction bytes are ordered in memory. Refer to the [elm/bytes docs][endianness] for more information.
-
-[endianness]: https://package.elm-lang.org/packages/elm/bytes/latest/Bytes#Endianness
-
--}
-type alias Endianness =
-    Bytes.Endianness
-
-
 {-| A sequence of bytes. Refer to the [elm/bytes docs][bytes] for more information.
 
 [bytes]: https://package.elm-lang.org/packages/elm/bytes/latest/Bytes#Bytes
@@ -114,7 +105,7 @@ type alias Decoder a =
     BD.Decoder a
 
 
-endian : Endianness
+endian : Bytes.Endianness
 endian =
     Bytes.BE
 
@@ -208,48 +199,32 @@ bool =
         )
 
 
-{-| `Codec` between a signed 32-bit integer and an Elm `Int`.
-Use this if the byte ordering and number of bytes used isn't a concern.
--}
-signedInt : Codec Int
-signedInt =
-    signedInt32 endian
-
-
-{-| `Codec` between an unsigned 32-bit integer and an Elm `Int`.
-Use this if the byte ordering and number of bytes used isn't a concern.
--}
-unsignedInt : Codec Int
-unsignedInt =
-    unsignedInt32 endian
-
-
 {-| `Codec` between a signed 32-bit integer and an Elm `Int`
 -}
-signedInt32 : Endianness -> Codec Int
-signedInt32 endianness =
-    build (BE.signedInt32 endianness) (BD.signedInt32 endianness)
+signedInt32 : Codec Int
+signedInt32 =
+    build (BE.signedInt32 endian) (BD.signedInt32 endian)
 
 
 {-| `Codec` between an unsigned 32-bit integer and an Elm `Int`
 -}
-unsignedInt32 : Endianness -> Codec Int
-unsignedInt32 endianness =
-    build (BE.unsignedInt32 endianness) (BD.unsignedInt32 endianness)
+unsignedInt32 : Codec Int
+unsignedInt32 =
+    build (BE.unsignedInt32 endian) (BD.unsignedInt32 endian)
 
 
 {-| `Codec` between a signed 16-bit integer and an Elm `Int`
 -}
-signedInt16 : Endianness -> Codec Int
-signedInt16 endianness =
-    build (BE.signedInt16 endianness) (BD.signedInt16 endianness)
+signedInt16 : Codec Int
+signedInt16 =
+    build (BE.signedInt16 endian) (BD.signedInt16 endian)
 
 
 {-| `Codec` between an unsigned 16-bit integer and an Elm `Int`
 -}
-unsignedInt16 : Endianness -> Codec Int
-unsignedInt16 endianness =
-    build (BE.unsignedInt16 endianness) (BD.unsignedInt16 endianness)
+unsignedInt16 : Codec Int
+unsignedInt16 =
+    build (BE.unsignedInt16 endian) (BD.unsignedInt16 endian)
 
 
 {-| `Codec` between a signed 8-bit integer and an Elm `Int`
@@ -440,7 +415,11 @@ result errorCodec valueCodec =
         |> buildCustom
 
 
-{-| `Codec` for `Bytes`. This is useful if you wanted to include binary data that you're going to decode elsewhere such as a PNG file.
+{-| `Codec` for `Bytes`. This is useful if you wanted to include binary data that you're going to decode elsewhere.
+
+    pngCodec =
+        Codec.bytes |> Codec.map pngEncoder pngDecoder
+
 -}
 bytes : Codec Bytes
 bytes =
@@ -556,7 +535,7 @@ You need to pass a pattern matching function, see the FAQ for details.
 -}
 custom : match -> CustomCodec match value
 custom match =
-    customWithIdCodec signedInt match
+    customWithIdCodec signedInt32 match
 
 
 variant :
@@ -921,32 +900,6 @@ andThen fromBytes toBytes codec =
 
 
 -- FANCY
-
-
-{-| Create a `Codec` for a recursive data structure.
-The argument to the function you need to pass is the fully formed `Codec`, see the FAQ for details.
-
-    type Peano
-        = Peano (Maybe Peano)
-
-    peanoCodec : Codec Peano
-    peanoCodec =
-        Codec.recursive
-            (\finishedCodec ->
-                Codec.maybe finishedCodec
-                    |> Codec.map Peano (\(Peano p) -> p)
-            )
-
--}
-recursive : (Codec a -> Codec a) -> Codec a
-recursive f =
-    let
-        step =
-            { decoder = BD.succeed () |> BD.andThen (\() -> recursive f |> decoder)
-            , encoder = \value -> encoder (recursive f) value
-            }
-    in
-    f <| Codec step
 
 
 {-| This is useful for recursive structures that are not easily modeled with `recursive`.

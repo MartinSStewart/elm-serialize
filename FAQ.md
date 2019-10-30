@@ -2,29 +2,8 @@
 Besides the fact that this package is designed for `elm/bytes` instead of `elm/json` other notable differences are:
 * `variantX` functions use `Int` instead of `String` for telling apart different constructors
 * `CustomObject` fields aren't given names and their order matters 
-* There is no `oneOf`, `optionalField`, `andThen`, or `build` functions
+* There is no `oneOf`, `optionalField`, `andThen`, `recursive` or `build` functions
 * There are more ways to encode elm `int` and `float` values (i.e. `signedInt`, `unsignedInt`, `float32`, `float64`)
-
-## How do you use `recursive`?
-The trick to understanding the `recursive` codec is: pretend you are already done.
-When the function you pass to `recursive` is called the argument is the finished `Codec`.
-
-An example may be worth a thousand words:
-
-```elm
-import Codec.Bytes as Codec exposing (Codec)
-
-type Peano
-    = Peano (Maybe Peano)
-
-peanoCodec : Codec Peano
-peanoCodec =
-    Codec.recursive
-        (\finishedCodec ->
-            Codec.maybe finishedCodec
-                |> Codec.map Peano (\(Peano p) -> p)
-        )
-```
 
 ## Why does `map` take two opposite functions?
 One is used for the encoder, the other for the decoder
@@ -68,34 +47,9 @@ semaphoreCodec =
         |> Codec.buildCustom
 ```
 
-A second example combining `recursive` and `custom`:
+## What do I use instead of recursive?
 
-```elm
-import Codec.Bytes as Codec exposing (Codec)
-
-type Tree a
-    = Node (List (Tree a))
-    | Leaf a
-
-treeCodec : Codec a -> Codec (Tree a)
-treeCodec leafCodec =
-    Codec.recursive
-        (\finishedCodec ->
-            let
-                match nodeEncoder leafEncoder tree =
-                    case tree of
-                        Node cs ->
-                            nodeEncoder cs
-
-                        Leaf x ->
-                            leafEncoder x
-            in
-            Codec.custom match
-                |> Codec.variant1 0 Node (Codec.list finishedCodec)
-                |> Codec.variant1 1 Leaf leafCodec
-                |> Codec.buildCustom
-        )
-```
+Use `lazy` instead.
 
 ## If there's no `oneOf` or `optionalField`, how is versioning done?
 If you want your `Codec`s to evolve over time and still be able to decode old 
