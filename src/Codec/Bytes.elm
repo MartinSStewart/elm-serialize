@@ -286,8 +286,8 @@ maybe codec =
                 Just value_ ->
                     justEncoder value_
         )
-        |> variant0 0 Nothing
-        |> variant1 1 Just codec
+        |> variant0 Nothing
+        |> variant1 Just codec
         |> buildCustom
 
 
@@ -396,8 +396,8 @@ result errorCodec valueCodec =
                 Ok ok ->
                     okEncoder ok
         )
-        |> variant1 0 Err errorCodec
-        |> variant1 1 Ok valueCodec
+        |> variant1 Err errorCodec
+        |> variant1 Ok valueCodec
         |> buildCustom
 
 
@@ -444,6 +444,7 @@ If you don't have one (for example it's a simple type with no name), you should 
     pointCodec : Codec Point
     pointCodec =
         Codec.object Point
+            -- Order matters here! Removing a variant, inserting a variant before an existing one, or swapping two variants will prevent you from decoding existing data.
             |> Codec.field .x Codec.signedInt
             |> Codec.field .y Codec.signedInt
             |> Codec.buildObject
@@ -488,6 +489,7 @@ type CustomCodec match v
         { match : match
         , decoder : Int -> Decoder v -> Decoder v
         , idCodec : Codec Int
+        , idCounter : Int
         }
 
 
@@ -513,32 +515,32 @@ You need to pass a pattern matching function, see the FAQ for details.
                     Green ->
                         greenEncoder
             )
-            |> Codec.variant3 0 Red Codec.signedInt Codec.string Codec.bool
-            |> Codec.variant1 1 Yellow Codec.float64
-            |> Codec.variant0 2 Green
+            -- Order matters here! Removing a variant, inserting a variant before an existing one, or swapping two variants will prevent you from decoding existing data.
+            |> Codec.variant3 Red Codec.signedInt Codec.string Codec.bool
+            |> Codec.variant1 Yellow Codec.float64
+            |> Codec.variant0 Green
             |> Codec.buildCustom
 
 -}
 custom : match -> CustomCodec match value
 custom match =
-    customWithIdCodec signedInt32 match
+    customWithIdCodec unsignedInt16 match
 
 
 variant :
-    Int
-    -> ((List Encoder -> Encoder) -> a)
+    ((List Encoder -> Encoder) -> a)
     -> Decoder v
     -> CustomCodec (a -> b) v
     -> CustomCodec b v
-variant name matchPiece decoderPiece (CustomCodec am) =
+variant matchPiece decoderPiece (CustomCodec am) =
     let
         enc v =
-            getEncoder am.idCodec name
+            getEncoder am.idCodec am.idCounter
                 :: v
                 |> BE.sequence
 
         decoder_ tag orElse =
-            if tag == name then
+            if tag == am.idCounter then
                 decoderPiece
 
             else
@@ -548,18 +550,15 @@ variant name matchPiece decoderPiece (CustomCodec am) =
         { match = am.match <| matchPiece enc
         , decoder = decoder_
         , idCodec = am.idCodec
+        , idCounter = am.idCounter + 1
         }
 
 
 {-| Define a variant with 0 parameters for a custom type.
 -}
-variant0 :
-    Int
-    -> v
-    -> CustomCodec (Encoder -> a) v
-    -> CustomCodec a v
-variant0 name ctor =
-    variant name
+variant0 : v -> CustomCodec (Encoder -> a) v -> CustomCodec a v
+variant0 ctor =
+    variant
         (\c -> c [])
         (BD.succeed ctor)
 
@@ -567,13 +566,12 @@ variant0 name ctor =
 {-| Define a variant with 1 parameters for a custom type.
 -}
 variant1 :
-    Int
-    -> (a -> v)
+    (a -> v)
     -> Codec a
     -> CustomCodec ((a -> Encoder) -> b) v
     -> CustomCodec b v
-variant1 name ctor m1 =
-    variant name
+variant1 ctor m1 =
+    variant
         (\c v ->
             c
                 [ getEncoder m1 v
@@ -587,14 +585,13 @@ variant1 name ctor m1 =
 {-| Define a variant with 2 parameters for a custom type.
 -}
 variant2 :
-    Int
-    -> (a -> b -> v)
+    (a -> b -> v)
     -> Codec a
     -> Codec b
     -> CustomCodec ((a -> b -> Encoder) -> c) v
     -> CustomCodec c v
-variant2 id ctor m1 m2 =
-    variant id
+variant2 ctor m1 m2 =
+    variant
         (\c v1 v2 ->
             c
                 [ getEncoder m1 v1
@@ -610,15 +607,14 @@ variant2 id ctor m1 m2 =
 {-| Define a variant with 3 parameters for a custom type.
 -}
 variant3 :
-    Int
-    -> (a -> b -> c -> v)
+    (a -> b -> c -> v)
     -> Codec a
     -> Codec b
     -> Codec c
     -> CustomCodec ((a -> b -> c -> Encoder) -> partial) v
     -> CustomCodec partial v
-variant3 id ctor m1 m2 m3 =
-    variant id
+variant3 ctor m1 m2 m3 =
+    variant
         (\c v1 v2 v3 ->
             c
                 [ getEncoder m1 v1
@@ -636,16 +632,15 @@ variant3 id ctor m1 m2 m3 =
 {-| Define a variant with 4 parameters for a custom type.
 -}
 variant4 :
-    Int
-    -> (a -> b -> c -> d -> v)
+    (a -> b -> c -> d -> v)
     -> Codec a
     -> Codec b
     -> Codec c
     -> Codec d
     -> CustomCodec ((a -> b -> c -> d -> Encoder) -> partial) v
     -> CustomCodec partial v
-variant4 id ctor m1 m2 m3 m4 =
-    variant id
+variant4 ctor m1 m2 m3 m4 =
+    variant
         (\c v1 v2 v3 v4 ->
             c
                 [ getEncoder m1 v1
@@ -665,8 +660,7 @@ variant4 id ctor m1 m2 m3 m4 =
 {-| Define a variant with 5 parameters for a custom type.
 -}
 variant5 :
-    Int
-    -> (a -> b -> c -> d -> e -> v)
+    (a -> b -> c -> d -> e -> v)
     -> Codec a
     -> Codec b
     -> Codec c
@@ -674,8 +668,8 @@ variant5 :
     -> Codec e
     -> CustomCodec ((a -> b -> c -> d -> e -> Encoder) -> partial) v
     -> CustomCodec partial v
-variant5 id ctor m1 m2 m3 m4 m5 =
-    variant id
+variant5 ctor m1 m2 m3 m4 m5 =
+    variant
         (\c v1 v2 v3 v4 v5 ->
             c
                 [ getEncoder m1 v1
@@ -697,8 +691,7 @@ variant5 id ctor m1 m2 m3 m4 m5 =
 {-| Define a variant with 6 parameters for a custom type.
 -}
 variant6 :
-    Int
-    -> (a -> b -> c -> d -> e -> f -> v)
+    (a -> b -> c -> d -> e -> f -> v)
     -> Codec a
     -> Codec b
     -> Codec c
@@ -707,8 +700,8 @@ variant6 :
     -> Codec f
     -> CustomCodec ((a -> b -> c -> d -> e -> f -> Encoder) -> partial) v
     -> CustomCodec partial v
-variant6 id ctor m1 m2 m3 m4 m5 m6 =
-    variant id
+variant6 ctor m1 m2 m3 m4 m5 m6 =
+    variant
         (\c v1 v2 v3 v4 v5 v6 ->
             c
                 [ getEncoder m1 v1
@@ -734,8 +727,7 @@ variant6 id ctor m1 m2 m3 m4 m5 m6 =
 {-| Define a variant with 7 parameters for a custom type.
 -}
 variant7 :
-    Int
-    -> (a -> b -> c -> d -> e -> f -> g -> v)
+    (a -> b -> c -> d -> e -> f -> g -> v)
     -> Codec a
     -> Codec b
     -> Codec c
@@ -745,8 +737,8 @@ variant7 :
     -> Codec g
     -> CustomCodec ((a -> b -> c -> d -> e -> f -> g -> Encoder) -> partial) v
     -> CustomCodec partial v
-variant7 id ctor m1 m2 m3 m4 m5 m6 m7 =
-    variant id
+variant7 ctor m1 m2 m3 m4 m5 m6 m7 =
+    variant
         (\c v1 v2 v3 v4 v5 v6 v7 ->
             c
                 [ getEncoder m1 v1
@@ -776,8 +768,7 @@ variant7 id ctor m1 m2 m3 m4 m5 m6 m7 =
 {-| Define a variant with 8 parameters for a custom type.
 -}
 variant8 :
-    Int
-    -> (a -> b -> c -> d -> e -> f -> g -> h -> v)
+    (a -> b -> c -> d -> e -> f -> g -> h -> v)
     -> Codec a
     -> Codec b
     -> Codec c
@@ -788,8 +779,8 @@ variant8 :
     -> Codec h
     -> CustomCodec ((a -> b -> c -> d -> e -> f -> g -> h -> Encoder) -> partial) v
     -> CustomCodec partial v
-variant8 id ctor m1 m2 m3 m4 m5 m6 m7 m8 =
-    variant id
+variant8 ctor m1 m2 m3 m4 m5 m6 m7 m8 =
+    variant
         (\c v1 v2 v3 v4 v5 v6 v7 v8 ->
             c
                 [ getEncoder m1 v1
@@ -915,7 +906,7 @@ lazy f =
 
 
 {-| Same as `custom` but here we can choose what codec to use for the integer id we tell apart variants with.
-This is useful if, for example, you know you won't have ids outside of the range 0 - 255 and can use unsignedInt8 instead of the default signedInt32 to save some space.
+This is useful if, for example, you know you will never have more than 256 variants then you can use unsignedInt8 instead of the default unsignedInt16 to save some space.
 -}
 customWithIdCodec : Codec Int -> match -> CustomCodec match value
 customWithIdCodec idCodec match =
@@ -923,6 +914,7 @@ customWithIdCodec idCodec match =
         { match = match
         , decoder = \_ -> identity
         , idCodec = idCodec
+        , idCounter = 0
         }
 
 

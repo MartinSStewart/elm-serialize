@@ -3,9 +3,46 @@
 
 ### 2.0.0 
 
-While this is a breaking change for the API, it is not a breaking change for the underlying binary format. 
-If you've encoded data with version 1.1.0, 2.0.0 should be able to decode it as long as you replace any removed functions with the functions intended to replace them.
+This is both a breaking change for the API and any data encoded with it. It's possible to decode old data if you handle the following changes:
 
+
+* `variant0`, `variant1`, etc for `CustomCodec` no longer need an id. In order to upgrade, follow this example
+    ```elm
+    type MyType = MyType0 | MyType1
+    
+    myCodec = 
+        Codec.custom
+            (\myType0Encoder myType1Encoder value ->
+                case value of
+                    MyType0 ->
+                        myType0Encoder
+    
+                    MyType1 ->
+                        myType1Encoder
+            )
+            |> Codec.variant0 0 MyType0
+            |> Codec.variant0 1 MyType1
+            |> Codec.buildCustom
+    ```
+    becomes
+    ```elm
+    type MyType = MyType0 | MyType1
+    
+    myCodec = 
+        Codec.customWithIdCodec Codec.signedInt32
+            (\myType0Encoder myType1Encoder value ->
+                case value of
+                    MyType0 ->
+                        myType0Encoder
+    
+                    MyType1 ->
+                        myType1Encoder
+            )
+            |> Codec.variant0 MyType0
+            |> Codec.variant0 MyType1
+            |> Codec.buildCustom
+    ```
+    Not that if your ids don't start at 0 or aren't incrementally increasing then it's not possible to upgrade. If this is a serious issue, post an issue and we'll see what can be done.
 * Removed `recursive`. `lazy` is easier to use and more flexible. 
 * Removed `signedInt` and `unsignedInt`. Use `signedInt32` and `unsignedInt32` instead.
 * Removed the need to specify endianness for `signedInt32`, `unsignedInt32`, `signedInt16`, and `unsignedInt16`.

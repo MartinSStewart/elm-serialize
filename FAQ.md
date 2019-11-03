@@ -1,7 +1,7 @@
 ## What's different between this and miniBill/elm-codec?
 Besides the fact that this package is designed for `elm/bytes` instead of `elm/json` other notable differences are:
-* `variantX` functions use `Int` instead of `String` for telling apart different constructors
-* `CustomObject` fields aren't given names and their order matters 
+* `CustomCodec` variants aren't given names and their order matters
+* `ObjectCodec` fields aren't given names and their order matters 
 * There is no `oneOf`, `optionalField`, `andThen`, `recursive` or `build` functions
 * There are more ways to encode elm `int` and `float` values (i.e. `signedInt32`, `unsignedInt32`, `float32`, `float64`)
 * `decodeValue`, `encodeToValue`, `encoder`, and `decoder` are renamed to `decode`, `encode`, `getEncoder`, `getDecoder` respectively
@@ -42,9 +42,10 @@ semaphoreCodec =
                 Green ->
                     greenEncoder
         )
-        |> Codec.variant3 0 Red Codec.signedInt Codec.string Codec.bool
-        |> Codec.variant1 1 Yellow Codec.float64
-        |> Codec.variant0 2 Green
+        -- Order matters here! Removing a variant, inserting a variant before an existing one, or swapping two variants will prevent you from decoding existing data.
+        |> Codec.variant3 Red Codec.signedInt Codec.string Codec.bool
+        |> Codec.variant1 Yellow Codec.float64
+        |> Codec.variant0 Green
         |> Codec.buildCustom
 ```
 
@@ -87,8 +88,8 @@ gpsCodec =
                 GpsV2 tuple ->
                     gpsV2Encoder tuple
         )
-        |> Codec.variant1 1 GpsV1 gpsV1Codec
-        |> Codec.variant1 2 GpsV2 gpsV2Codec
+        |> Codec.variant1 GpsV1 gpsV1Codec
+        |> Codec.variant1 GpsV2 gpsV2Codec
         |> Codec.buildCustom
         |> Codec.map
             (\value ->

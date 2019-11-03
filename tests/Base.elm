@@ -183,7 +183,7 @@ customTests =
                         () ->
                             f
                 )
-                |> Codec.variant0 0 ()
+                |> Codec.variant0 ()
                 |> Codec.buildCustom
             )
         ]
@@ -195,7 +195,7 @@ customTests =
                         Newtype a ->
                             f a
                 )
-                |> Codec.variant1 1 Newtype Codec.signedInt32
+                |> Codec.variant1 Newtype Codec.signedInt32
                 |> Codec.buildCustom
             )
         ]
@@ -207,7 +207,7 @@ customTests =
                         Newtype a ->
                             f a
                 )
-                |> Codec.variant1 1 Newtype Codec.signedInt32
+                |> Codec.variant1 Newtype Codec.signedInt32
                 |> Codec.buildCustom
             )
         ]
@@ -219,7 +219,7 @@ customTests =
                         Newtype6 a b c d e f ->
                             function a b c d e f
                 )
-                |> Codec.variant6 1 Newtype6 Codec.signedInt32 Codec.signedInt32 Codec.signedInt32 Codec.signedInt32 Codec.signedInt32 Codec.signedInt32
+                |> Codec.variant6 Newtype6 Codec.signedInt32 Codec.signedInt32 Codec.signedInt32 Codec.signedInt32 Codec.signedInt32 Codec.signedInt32
                 |> Codec.buildCustom
             )
         ]
@@ -236,8 +236,8 @@ customTests =
             codec =
                 Codec.custom match
                     -- Use a negative id here just to make sure the default id codec handles negative values
-                    |> Codec.variant0 -1 Nothing
-                    |> Codec.variant1 0 Just Codec.signedInt32
+                    |> Codec.variant0 Nothing
+                    |> Codec.variant1 Just Codec.signedInt32
                     |> Codec.buildCustom
 
             fuzzers =
