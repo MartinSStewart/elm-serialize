@@ -444,7 +444,7 @@ If you don't have one (for example it's a simple type with no name), you should 
     pointCodec : Codec Point
     pointCodec =
         Codec.object Point
-            -- Order matters here! Removing a variant, inserting a variant before an existing one, or swapping two variants will prevent you from decoding existing data.
+            -- Note that adding, removing, or reordering fields will prevent you from decoding existing data.
             |> Codec.field .x Codec.signedInt
             |> Codec.field .y Codec.signedInt
             |> Codec.buildObject
