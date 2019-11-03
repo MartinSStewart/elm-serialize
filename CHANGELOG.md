@@ -42,7 +42,7 @@ This is both a breaking change for the API and any data encoded with it. It's po
             |> Codec.variant0 MyType1
             |> Codec.buildCustom
     ```
-    Not that if your ids don't start at 0 or aren't incrementally increasing then it's not possible to upgrade. If this is a serious issue, post an issue and we'll see what can be done.
+    If your ids don't start at 0 or aren't incrementally increasing **then it's not possible to upgrade**. If this is a serious problem, post an issue on GitHub and we'll figure out something.
 * Removed `recursive`. `lazy` is easier to use and more flexible. 
 * Removed `signedInt` and `unsignedInt`. Use `signedInt32` and `unsignedInt32` instead.
 * Removed the need to specify endianness for `signedInt32`, `unsignedInt32`, `signedInt16`, and `unsignedInt16`.
