@@ -515,10 +515,11 @@ You need to pass a pattern matching function, see the FAQ for details.
                     Green ->
                         greenEncoder
             )
-            -- Order matters here! Removing a variant, inserting a variant before an existing one, or swapping two variants will prevent you from decoding existing data.
+            -- Note that removing a variant, inserting a variant before an existing one, or swapping two variants will prevent you from decoding existing data.
             |> Codec.variant3 Red Codec.signedInt Codec.string Codec.bool
             |> Codec.variant1 Yellow Codec.float64
             |> Codec.variant0 Green
+            -- It's safe to add new variants here later though
             |> Codec.buildCustom
 
 -}
