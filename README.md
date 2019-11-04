@@ -29,9 +29,9 @@ decode s =
 
 Ask for help on the [Elm Slack](https://elmlang.herokuapp.com/).
 
-You can also have a look at the `FAQ.md` file.
+You can also have a look at the [`FAQ.md`](https://github.com/MartinSStewart/elm-codec-bytes/blob/master/FAQ.md) file.
 
 ## Credits
 
 This package is inspired by `miniBill/elm-codec` and reuses much of the API. 
-It's not a drop in replacement however, see `FAQ.md` for a list of differences.
+It's not a drop in replacement however, see [`FAQ.md`](https://github.com/MartinSStewart/elm-codec-bytes/blob/master/FAQ.md) for a list of differences.
