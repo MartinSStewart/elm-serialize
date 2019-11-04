@@ -10,19 +10,19 @@ Note that this package is _not_ appropriate if you want to handle an external bi
 Round-tripping is done through the use of encoders (`a -> Encoder`) and decoders (`Decoder a`) for a sequence of bytes, collectively called a `Codec a`.
 
 ```elm
-import Codec.Bytes as Codec exposing (Bytes, Codec, Encoder)
+import Codec.Bytes as Codec exposing (Bytes, Codec)
 
 codec : Codec (List Int)
 codec =
-    Codec.list Codec.signedInt
+    Codec.list Codec.signedInt32
 
 encode : List Int -> Bytes
 encode list =
-    Codec.encodeToValue codec list
+    Codec.encode codec list
 
 decode : Bytes -> Maybe (List Int)
 decode s =
-    Codec.decodeValue codec s
+    Codec.decode codec s
 ```
 
 ## Learning Resources

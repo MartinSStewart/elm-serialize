@@ -6,8 +6,32 @@ Besides the fact that this package is designed for `elm/bytes` instead of `elm/j
 * There are more ways to encode elm `int` and `float` values (i.e. `signedInt32`, `unsignedInt32`, `float32`, `float64`)
 * `decodeValue`, `encodeToValue`, `encoder`, and `decoder` are renamed to `decode`, `encode`, `getEncoder`, `getDecoder` respectively
 
-## Why does `map` take two opposite functions?
-One is used for the encoder, the other for the decoder
+## How do I build `Codec`s for records?
+
+Similar to how it's done in [`NoRedInk/elm-json-decode-pipeline`](https://package.elm-lang.org/packages/NoRedInk/elm-json-decode-pipeline/latest/). 
+An example is probably the best way to explain it
+
+```elm
+type alias Point =
+    { x : Int
+    , y : Int
+    }
+
+pointCodec : Codec Point
+pointCodec =
+    Codec.object Point
+        -- Note that adding, removing, or reordering fields will prevent you from decoding existing data.
+        |> Codec.field .x Codec.signedInt
+        |> Codec.field .y Codec.signedInt
+        |> Codec.finishObject
+```
+
+The first parameter for `Codec.object` is our constructor. 
+Each parameter in our constructor (in this case it's `Point`) is given a 
+`Codec.field` that describes how we get a value from point and how we 
+encode/decode that value.
+
+Lastly you end with a call to `finishObject`.
 
 ## How do I build `Codec`s for custom types?
 You start building with `custom` which needs the pattern matcher for your type as an argument.
@@ -49,10 +73,6 @@ semaphoreCodec =
         -- It's safe to add new variants here later though
         |> Codec.finishCustom
 ```
-
-## What do I use instead of recursive?
-
-Use `lazy` instead.
 
 ## If there's no `oneOf` or `optionalField`, how is versioning done?
 If you want your `Codec`s to evolve over time and still be able to decode old 
