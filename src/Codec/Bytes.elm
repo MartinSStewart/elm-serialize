@@ -433,7 +433,7 @@ type ObjectCodec a b
         }
 
 
-{-| Start creating a `Codec` for an object. You should pass the main constructor as argument.
+{-| Start creating a `Codec` for an object. You should pass the constructor as the first parameter.
 If you don't have one (for example it's a simple type with no name), you should pass a function that given the field values builds an object.
 
     type alias Point =
