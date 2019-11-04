@@ -3,11 +3,11 @@ module Codec.Bytes exposing
     , Decoder
     , string, bool, char, float64, float32, signedInt32, unsignedInt32, signedInt16, unsignedInt16, signedInt8, unsignedInt8, bytes
     , maybe, list, array, dict, set, tuple, triple, result
-    , ObjectCodec, object, field, buildObject
-    , CustomCodec, custom, variant0, variant1, variant2, variant3, variant4, variant5, variant6, variant7, variant8, buildCustom
+    , ObjectCodec, object, field, finishObject
+    , CustomCodec, custom, variant0, variant1, variant2, variant3, variant4, variant5, variant6, variant7, variant8
     , map
     , constant, lazy, customWithIdCodec
-    , decode, encode, getDecoder, getEncoder
+    , decode, encode, finishCustom, getDecoder, getEncoder
     )
 
 {-| A `Codec a` contains a `Bytes.Decoder a` and the corresponding `a -> Bytes.Encoder`.
@@ -40,7 +40,7 @@ module Codec.Bytes exposing
 
 # Object Primitives
 
-@docs ObjectCodec, object, field, buildObject
+@docs ObjectCodec, object, field, finishObject
 
 
 # Custom Types
@@ -288,7 +288,7 @@ maybe codec =
         )
         |> variant0 Nothing
         |> variant1 Just codec
-        |> buildCustom
+        |> finishCustom
 
 
 {-| `Codec` between a sequence of bytes and an Elm `List`.
@@ -398,7 +398,7 @@ result errorCodec valueCodec =
         )
         |> variant1 Err errorCodec
         |> variant1 Ok valueCodec
-        |> buildCustom
+        |> finishCustom
 
 
 {-| `Codec` for `Bytes`. This is useful if you wanted to include binary data that you're going to decode elsewhere.
@@ -447,7 +447,7 @@ If you don't have one (for example it's a simple type with no name), you should 
             -- Note that adding, removing, or reordering fields will prevent you from decoding existing data.
             |> Codec.field .x Codec.signedInt
             |> Codec.field .y Codec.signedInt
-            |> Codec.buildObject
+            |> Codec.finishObject
 
 -}
 object : b -> ObjectCodec a b
@@ -470,8 +470,8 @@ field getter codec (ObjectCodec ocodec) =
 
 {-| Create a `Codec` from a fully specified `ObjectCodec`.
 -}
-buildObject : ObjectCodec a a -> Codec a
-buildObject (ObjectCodec om) =
+finishObject : ObjectCodec a a -> Codec a
+finishObject (ObjectCodec om) =
     Codec
         { encoder = om.encoder >> List.reverse >> BE.sequence
         , decoder = om.decoder
@@ -520,7 +520,7 @@ You need to pass a pattern matching function, see the FAQ for details.
             |> Codec.variant1 Yellow Codec.float64
             |> Codec.variant0 Green
             -- It's safe to add new variants here later though
-            |> Codec.buildCustom
+            |> Codec.finishCustom
 
 -}
 custom : match -> CustomCodec match value
@@ -814,8 +814,8 @@ variant8 ctor m1 m2 m3 m4 m5 m6 m7 m8 =
 
 {-| Build a `Codec` for a fully specified custom type.
 -}
-buildCustom : CustomCodec (a -> Encoder) a -> Codec a
-buildCustom (CustomCodec am) =
+finishCustom : CustomCodec (a -> Encoder) a -> Codec a
+finishCustom (CustomCodec am) =
     Codec
         { encoder = \v -> am.match v
         , decoder =

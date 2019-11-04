@@ -130,14 +130,14 @@ objectTests =
     [ describe "with 0 fields"
         [ roundtrips (Fuzz.constant {})
             (Codec.object {}
-                |> Codec.buildObject
+                |> Codec.finishObject
             )
         ]
     , describe "with 1 field"
         [ roundtrips (Fuzz.map (\i -> { fname = i }) signedInt32Fuzz)
             (Codec.object (\i -> { fname = i })
                 |> Codec.field .fname Codec.signedInt32
-                |> Codec.buildObject
+                |> Codec.finishObject
             )
         ]
     , describe "with 2 fields"
@@ -159,7 +159,7 @@ objectTests =
                 )
                 |> Codec.field .a Codec.signedInt32
                 |> Codec.field .b Codec.signedInt32
-                |> Codec.buildObject
+                |> Codec.finishObject
             )
         ]
     ]
@@ -184,7 +184,7 @@ customTests =
                             f
                 )
                 |> Codec.variant0 ()
-                |> Codec.buildCustom
+                |> Codec.finishCustom
             )
         ]
     , describe "with 1 ctor, 1 arg"
@@ -196,7 +196,7 @@ customTests =
                             f a
                 )
                 |> Codec.variant1 Newtype Codec.signedInt32
-                |> Codec.buildCustom
+                |> Codec.finishCustom
             )
         ]
     , describe "with 1 ctor, 1 arg, different id codec"
@@ -208,7 +208,7 @@ customTests =
                             f a
                 )
                 |> Codec.variant1 Newtype Codec.signedInt32
-                |> Codec.buildCustom
+                |> Codec.finishCustom
             )
         ]
     , describe "with 1 ctor, 6 arg"
@@ -220,7 +220,7 @@ customTests =
                             function a b c d e f
                 )
                 |> Codec.variant6 Newtype6 Codec.signedInt32 Codec.signedInt32 Codec.signedInt32 Codec.signedInt32 Codec.signedInt32 Codec.signedInt32
-                |> Codec.buildCustom
+                |> Codec.finishCustom
             )
         ]
     , describe "with 2 ctors, 0,1 args" <|
@@ -235,10 +235,9 @@ customTests =
 
             codec =
                 Codec.custom match
-                    -- Use a negative id here just to make sure the default id codec handles negative values
                     |> Codec.variant0 Nothing
                     |> Codec.variant1 Just Codec.signedInt32
-                    |> Codec.buildCustom
+                    |> Codec.finishCustom
 
             fuzzers =
                 [ ( "1st ctor", Fuzz.constant Nothing )

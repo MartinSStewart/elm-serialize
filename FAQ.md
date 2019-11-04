@@ -16,7 +16,7 @@ The pattern matcher is just the most generic `case ... of` possible for your typ
 
 You then chain `variantX` calls for every alternative (in the same order as the pattern matcher).
 
-You end with a call to `buildCustom`.
+You end with a call to `finishCustom`.
 
 An example:
 
@@ -42,11 +42,12 @@ semaphoreCodec =
                 Green ->
                     greenEncoder
         )
-        -- Order matters here! Removing a variant, inserting a variant before an existing one, or swapping two variants will prevent you from decoding existing data.
+        -- Note that removing a variant, inserting a variant before an existing one, or swapping two variants will prevent you from decoding existing data.
         |> Codec.variant3 Red Codec.signedInt Codec.string Codec.bool
         |> Codec.variant1 Yellow Codec.float64
         |> Codec.variant0 Green
-        |> Codec.buildCustom
+        -- It's safe to add new variants here later though
+        |> Codec.finishCustom
 ```
 
 ## What do I use instead of recursive?
@@ -90,7 +91,7 @@ gpsCodec =
         )
         |> Codec.variant1 GpsV1 gpsV1Codec
         |> Codec.variant1 GpsV2 gpsV2Codec
-        |> Codec.buildCustom
+        |> Codec.finishCustom
         |> Codec.map
             (\value ->
                 case value of

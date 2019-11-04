@@ -6,7 +6,7 @@
 This is both a breaking change for the API and any data encoded with it. It's possible to decode old data if you handle the following changes:
 
 
-* `variant0`, `variant1`, etc for `CustomCodec` no longer need an id. In order to upgrade, follow this example
+* `variant0`, `variant1`, etc for `CustomCodec` no longer need an id and `buildCustom` has been renamed to `finishCustom`. In order to upgrade, follow this example
     ```elm
     type MyType = MyType0 | MyType1
     
@@ -40,7 +40,7 @@ This is both a breaking change for the API and any data encoded with it. It's po
             )
             |> Codec.variant0 MyType0
             |> Codec.variant0 MyType1
-            |> Codec.buildCustom
+            |> Codec.finishCustom
     ```
     If your ids don't start at 0 or aren't incrementally increasing **then it's not possible to upgrade**. If this is a serious problem, post an issue on GitHub and we'll figure out something.
 * Removed `recursive`. `lazy` is easier to use and more flexible. 
@@ -48,3 +48,4 @@ This is both a breaking change for the API and any data encoded with it. It's po
 * Removed the need to specify endianness for `signedInt32`, `unsignedInt32`, `signedInt16`, and `unsignedInt16`.
 * Renamed `encoder` and `decoder` to `getEncoder` and `getDecoder`
 * Renamed `encodeToValue` and `decodeValue` to `encode` and `decode`
+* Renamed `buildObject` to `finishObject`
