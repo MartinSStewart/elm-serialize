@@ -47,4 +47,4 @@ This is both a breaking change for the API and any data encoded with it. It's po
 * Removed `signedInt` and `unsignedInt`. Use `signedInt32` and `unsignedInt32` instead.
 * Removed the need to specify endianness for `signedInt32`, `unsignedInt32`, `signedInt16`, and `unsignedInt16`.
 * Renamed `encoder` and `decoder` to `getEncoder` and `getDecoder`
-* Renamed `encodeToValue` and `decodeValue` to `encoder` and `decoder`
+* Renamed `encodeToValue` and `decodeValue` to `encode` and `decode`
