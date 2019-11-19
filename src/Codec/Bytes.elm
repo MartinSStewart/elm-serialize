@@ -85,6 +85,7 @@ type Codec a
 type Error
     = BaseError String
     | VariantError { customIndex : Int, variantIndex : Int, error : Error }
+    | NoVariantMatches
     | FieldError { fieldIndex : Int, error : Error }
     | ListError { listIndex : Int, error : Error }
     | TupleError { tupleIndex : Int, error : Error }
@@ -306,23 +307,24 @@ char =
 
 
 -- DATA STRUCTURES
---{-| Represents an optional value.
----}
---maybe : Codec a -> Codec (Maybe a)
---maybe codec =
---    customWithIdCodec
---        unsignedInt8
---        (\nothingEncoder justEncoder value ->
---            case value of
---                Nothing ->
---                    nothingEncoder
---
---                Just value_ ->
---                    justEncoder value_
---        )
---        |> variant0 Nothing
---        |> variant1 Just codec
---        |> finishCustom
+
+
+{-| Represents an optional value.
+-}
+maybe : Codec a -> Codec (Maybe a)
+maybe codec =
+    custom
+        (\nothingEncoder justEncoder value ->
+            case value of
+                Nothing ->
+                    nothingEncoder
+
+                Just value_ ->
+                    justEncoder value_
+        )
+        |> variant0 Nothing
+        |> variant1 Just codec
+        |> finishCustom
 
 
 {-| `Codec` between a sequence of bytes and an Elm `List`.
@@ -365,26 +367,25 @@ listStep decoder_ ( n, xs ) =
             decoder_
 
 
+{-| `Codec` between a sequence of bytes and an Elm `Array`.
+-}
+array : Codec a -> Codec (Array a)
+array codec =
+    list codec |> map Array.fromList Array.toList
 
---{-| `Codec` between a sequence of bytes and an Elm `Array`.
----}
---array : Codec a -> Codec (Array a)
---array codec =
---    list codec |> map Array.fromList Array.toList
---
---
---{-| `Codec` between a sequence of bytes and an Elm `Dict`.
----}
---dict : Codec comparable -> Codec a -> Codec (Dict comparable a)
---dict keyCodec valueCodec =
---    list (tuple keyCodec valueCodec) |> map Dict.fromList Dict.toList
---
---
---{-| `Codec` between a sequence of bytes and an Elm `Set`.
----}
---set : Codec comparable -> Codec (Set comparable)
---set codec =
---    list codec |> map Set.fromList Set.toList
+
+{-| `Codec` between a sequence of bytes and an Elm `Dict`.
+-}
+dict : Codec comparable -> Codec a -> Codec (Dict comparable a)
+dict keyCodec valueCodec =
+    list (tuple keyCodec valueCodec) |> map Dict.fromList Dict.toList
+
+
+{-| `Codec` between a sequence of bytes and an Elm `Set`.
+-}
+set : Codec comparable -> Codec (Set comparable)
+set codec =
+    list codec |> map Set.fromList Set.toList
 
 
 {-| `Codec` between a sequence of bytes and an Elm `Tuple`.
@@ -450,23 +451,22 @@ triple m1 m2 m3 =
         }
 
 
+{-| `Codec` for `Result` values.
+-}
+result : Codec error -> Codec value -> Codec (Result error value)
+result errorCodec valueCodec =
+    custom
+        (\errEncoder okEncoder value ->
+            case value of
+                Err err ->
+                    errEncoder err
 
---{-| `Codec` for `Result` values.
----}
---result : Codec error -> Codec value -> Codec (Result error value)
---result errorCodec valueCodec =
---    custom
---        (\errEncoder okEncoder value ->
---            case value of
---                Err err ->
---                    errEncoder err
---
---                Ok ok ->
---                    okEncoder ok
---        )
---        |> variant1 Err errorCodec
---        |> variant1 Ok valueCodec
---        |> finishCustom
+                Ok ok ->
+                    okEncoder ok
+        )
+        |> variant1 Err errorCodec
+        |> variant1 Ok valueCodec
+        |> finishCustom
 
 
 {-| `Codec` for `Bytes`. This is useful if you wanted to include binary data that you're going to decode elsewhere.
@@ -573,7 +573,6 @@ type CustomCodec match v
     = CustomCodec
         { match : match
         , decoder : Int -> Decoder (Result Error v) -> Decoder (Result Error v)
-        , idCodec : Codec Int
         , idCounter : Int
         }
 
@@ -610,7 +609,11 @@ You need to pass a pattern matching function, see the FAQ for details.
 -}
 custom : match -> CustomCodec match value
 custom match =
-    customWithIdCodec unsignedInt16 match
+    CustomCodec
+        { match = match
+        , decoder = \_ -> identity
+        , idCounter = 0
+        }
 
 
 variant :
@@ -621,7 +624,7 @@ variant :
 variant matchPiece decoderPiece (CustomCodec am) =
     let
         enc v =
-            getEncoder am.idCodec am.idCounter
+            BE.unsignedInt16 endian am.idCounter
                 :: v
                 |> BE.sequence
 
@@ -635,7 +638,6 @@ variant matchPiece decoderPiece (CustomCodec am) =
     CustomCodec
         { match = am.match <| matchPiece enc
         , decoder = decoder_
-        , idCodec = am.idCodec
         , idCounter = am.idCounter + 1
         }
 
@@ -647,6 +649,10 @@ variant0 ctor =
     variant
         (\c -> c [])
         (\_ -> BD.succeed (Ok ctor))
+
+
+variantError customIndex variantIndex error =
+    VariantError { customIndex = customIndex, variantIndex = variantIndex, error = error } |> Err
 
 
 {-| Define a variant with 1 parameters for a custom type.
@@ -671,7 +677,7 @@ variant1 ctor m1 =
                             ctor ok |> Ok
 
                         Err err ->
-                            VariantError { customIndex = index, variantIndex = 0, error = err } |> Err
+                            variantError index 0 err
                 )
                 (getDecoder m1)
         )
@@ -700,11 +706,11 @@ variant2 ctor m1 m2 =
                         ( Ok ok1, Ok ok2 ) ->
                             ctor ok1 ok2 |> Ok
 
-                        ( Err err1, _ ) ->
-                            VariantError { customIndex = index, variantIndex = 0, error = err1 } |> Err
+                        ( Err err, _ ) ->
+                            variantError index 0 err
 
-                        ( _, Err err2 ) ->
-                            VariantError { customIndex = index, variantIndex = 1, error = err2 } |> Err
+                        ( _, Err err ) ->
+                            variantError index 1 err
                 )
                 (getDecoder m1)
                 (getDecoder m2)
@@ -917,122 +923,109 @@ variant2 ctor m1 m2 =
 --                (getDecoder m8)
 --            )
 --        )
---
---
---{-| Build a `Codec` for a fully specified custom type.
----}
---finishCustom : CustomCodec (a -> Encoder) a -> Codec a
---finishCustom (CustomCodec am) =
---    Codec
---        { encoder = \v -> am.match v
---        , decoder =
---            getDecoder am.idCodec
---                |> BD.andThen
---                    (\tag ->
---                        am.decoder tag BD.fail
---                    )
---        }
---
---
---
----- MAPPING
---
---
---{-| Transform a `Codec`.
----}
---map : (a -> b) -> (b -> a) -> Codec a -> Codec b
---map fromBytes toBytes codec =
---    Codec
---        { decoder =
---            getDecoder codec
---                |> BD.andThen
---                    (\value ->
---                        case value of
---                            Ok ok ->
---                                BD.map fromBytes ok
---
---                            Err err ->
---                                BD.succeed err
---                    )
---        , encoder = \v -> toBytes v |> getEncoder codec
---        }
---
---
---{-| Transform a `Codec` in a way that can potentially fail when decoding.
---
---    {-| Volume must be between 0 and 1.
---    -}
---    volumeCodec =
---        Codec.float64
---            |> Codec.andThen
---                (\volume ->
---                    if volume <= 1 && volume >= 0 then
---                        Just volume
---
---                    else
---                        Nothing
---                )
---                (\volume -> volume)
---
----}
---andThen : (a -> Maybe b) -> (b -> a) -> Codec a -> Codec b
---andThen fromBytes toBytes codec =
---    Codec
---        { decoder =
---            getDecoder codec
---                |> BD.andThen
---                    (\value ->
---                        case fromBytes value of
---                            Just newValue ->
---                                BD.succeed newValue
---
---                            Nothing ->
---                                BD.fail
---                    )
---        , encoder = \v -> toBytes v |> getEncoder codec
---        }
---
---
---
----- FANCY
---
---
---{-| Handle situations where you need to define a codec in terms of itself.
---
---    type Peano
---        = Peano (Maybe Peano)
---
---    {-| The compiler will complain that this function causes an infinite loop.
---    -}
---    badPeanoCodec : Codec Peano
---    badPeanoCodec =
---        Codec.maybe badPeanoCodec |> Codec.map Peano (\(Peano a) -> a)
---
---    {-| Now the compiler is happy!
---    -}
---    goodPeanoCodec : Codec Peano
---    goodPeanoCodec =
---        Codec.maybe (Codec.lazy (\() -> goodPeanoCodec)) |> Codec.map Peano (\(Peano a) -> a)
---
----}
---lazy : (() -> Codec a) -> Codec a
---lazy f =
---    Codec
---        { decoder = BD.succeed () |> BD.andThen (\() -> getDecoder (f ()))
---        , encoder = \value -> getEncoder (f ()) value
---        }
 
 
-{-| Same as `custom` but here we can choose what codec to use for the integer id we tell apart variants with.
-This is useful if, for example, you know you will never have more than 256 variants then you can use unsignedInt8 instead of the default unsignedInt16 to save some space.
+{-| Build a `Codec` for a fully specified custom type.
 -}
-customWithIdCodec : Codec Int -> match -> CustomCodec match value
-customWithIdCodec idCodec match =
-    CustomCodec
-        { match = match
-        , decoder = \_ -> identity
-        , idCodec = idCodec
-        , idCounter = 0
+finishCustom : CustomCodec (a -> Encoder) a -> Codec a
+finishCustom (CustomCodec am) =
+    Codec
+        { encoder = \v -> am.match v
+        , decoder =
+            BD.unsignedInt16 endian
+                |> BD.andThen
+                    (\tag ->
+                        am.decoder tag (BD.succeed (Err NoVariantMatches))
+                    )
+        }
+
+
+
+---- MAPPING
+
+
+{-| Transform a `Codec`.
+-}
+map : (a -> b) -> (b -> a) -> Codec a -> Codec b
+map fromBytes toBytes codec =
+    Codec
+        { decoder =
+            getDecoder codec
+                |> BD.map
+                    (\value ->
+                        case value of
+                            Ok ok ->
+                                fromBytes ok |> Ok
+
+                            Err err ->
+                                Err err
+                    )
+        , encoder = \v -> toBytes v |> getEncoder codec
+        }
+
+
+{-| Transform a `Codec` in a way that can potentially fail when decoding.
+
+    {-| Volume must be between 0 and 1.
+    -}
+    volumeCodec =
+        Codec.float64
+            |> Codec.andThen
+                (\volume ->
+                    if volume <= 1 && volume >= 0 then
+                        Ok volume
+
+                    else
+                        Err "Volume is outside of valid range."
+                )
+                (\volume -> volume)
+
+-}
+andThen : (a -> Result String b) -> (b -> a) -> Codec a -> Codec b
+andThen fromBytes toBytes codec =
+    Codec
+        { decoder =
+            getDecoder codec
+                |> BD.map
+                    (\value ->
+                        case value of
+                            Ok ok ->
+                                fromBytes ok |> Result.mapError BaseError
+
+                            Err err ->
+                                Err err
+                    )
+        , encoder = \v -> toBytes v |> getEncoder codec
+        }
+
+
+
+-- FANCY
+
+
+{-| Handle situations where you need to define a codec in terms of itself.
+
+    type Peano
+        = Peano (Maybe Peano)
+
+    {-| The compiler will complain that this function causes an infinite loop.
+    -}
+    badPeanoCodec : Codec Peano
+    badPeanoCodec =
+        Codec.maybe badPeanoCodec |> Codec.map Peano (\(Peano a) -> a)
+
+    {-| Now the compiler is happy!
+    -}
+    goodPeanoCodec : Codec Peano
+    goodPeanoCodec =
+        Codec.maybe (Codec.lazy (\() -> goodPeanoCodec)) |> Codec.map Peano (\(Peano a) -> a)
+
+-}
+lazy : (() -> Codec a) -> Codec a
+lazy f =
+    Codec
+        { decoder = BD.succeed () |> BD.andThen (\() -> getDecoder (f ()))
+        , encoder = \value -> getEncoder (f ()) value
         }
 
 
