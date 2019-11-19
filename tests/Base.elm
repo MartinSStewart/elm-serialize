@@ -32,6 +32,7 @@ suite =
                         |> Expect.equal (Ok 632)
                 )
             ]
+        , describe "errorToString" errorToStringTest
         ]
 
 
@@ -381,4 +382,20 @@ maybeTests =
           <|
             Codec.maybe Codec.int
         ]
+    ]
+
+
+errorToStringTest : List Test
+errorToStringTest =
+    [ test "customTypeError" <|
+        \_ ->
+            let
+                expected =
+                    "An error occured in a custom type codec, in the 1st variant called. The line looks something like this (x marks the position of the parameter that failed to decode):\n"
+                        ++ "|> variant2 _ _ x\n\nwith this error message:\n    Something broke.\n\n\n"
+            in
+            { variantIndex = 0, variantSize = 2, variantConstructorIndex = 1, error = Codec.BaseError "Something broke." }
+                |> Codec.CustomTypeError
+                |> Codec.errorToString
+                |> Expect.equal expected
     ]

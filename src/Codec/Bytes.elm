@@ -8,7 +8,7 @@ module Codec.Bytes exposing
     , CustomTypeCodec, customType, variant0, variant1, variant2, variant3, variant4, variant5, variant6, variant7, variant8, finishCustomType
     , map, andThen
     , constant, lazy
-    , finishRecord
+    , errorToString, finishRecord
     )
 
 {-| A `Codec a` contains a `Bytes.Decoder a` and the corresponding `a -> Bytes.Encoder`.
@@ -65,6 +65,7 @@ import Bytes
 import Bytes.Decode as BD
 import Bytes.Encode as BE
 import Dict exposing (Dict)
+import Ordinal
 import Set exposing (Set)
 import Toop exposing (T4(..), T5(..), T6(..), T7(..), T8(..))
 
@@ -84,7 +85,7 @@ type Codec a
 
 type Error
     = BaseError String
-    | CustomTypeError { customIndex : Int, variantIndex : Int, error : Error }
+    | CustomTypeError { variantIndex : Int, variantSize : Int, variantConstructorIndex : Int, error : Error }
     | NoVariantMatches
     | RecordError { fieldIndex : Int, error : Error }
     | ListError { listIndex : Int, error : Error }
@@ -92,8 +93,64 @@ type Error
 
 
 errorToString : Error -> String
-errorToString =
-    Debug.todo ""
+errorToString errorData =
+    let
+        trace =
+            "An error occured" |> errorToString_ errorData
+
+        warning =
+            ""
+    in
+    trace ++ "\n\n\n" ++ warning
+
+
+errorToString_ : Error -> String -> String
+errorToString_ errorData previousText =
+    case errorData of
+        BaseError text ->
+            previousText ++ "The codec returned this error message:\n    " ++ text
+
+        CustomTypeError { variantIndex, variantSize, variantConstructorIndex, error } ->
+            let
+                variantText =
+                    "|> variant"
+                        ++ String.fromInt variantSize
+                        ++ " _"
+                        ++ String.repeat variantConstructorIndex " _"
+                        ++ " x"
+                        ++ String.repeat (variantSize - 1 - variantConstructorIndex) " codec"
+            in
+            previousText
+                ++ " in a custom type codec, in the "
+                ++ Ordinal.ordinal (variantIndex + 1)
+                ++ " variant called. The line looks something like this (x marks the position of the parameter that failed to decode):\n    "
+                ++ variantText
+                ++ "\n\n"
+                |> errorToString_ error
+
+        NoVariantMatches ->
+            previousText ++ " in a custom type codec. There wasn't any variants with the correct id. This might mean you've removed a variant and tried to decode data that needed that variant."
+
+        RecordError { fieldIndex, error } ->
+            previousText
+                ++ " in a record codec, in the "
+                ++ Ordinal.ordinal (fieldIndex + 1)
+                ++ " field\n\n"
+                |> errorToString_ error
+
+        ListError { listIndex, error } ->
+            previousText
+                ++ " in a list codec, in the "
+                ++ Ordinal.ordinal (listIndex + 1)
+                ++ " element\n\n"
+                |> errorToString_ error
+
+        TupleError { tupleIndex, error } ->
+            previousText
+                ++ " in a tuple codec, in the "
+                ++ Ordinal.ordinal (tupleIndex + 1)
+                ++ " element\n\n"
+                |> errorToString_ error
 
 
 {-| Describes how to generate a sequence of bytes.
@@ -603,8 +660,8 @@ variant0 ctor =
         (\_ -> BD.succeed (Ok ctor))
 
 
-variantError customIndex variantIndex error =
-    CustomTypeError { customIndex = customIndex, variantIndex = variantIndex, error = error } |> Err
+variantError customIndex variantSize variantIndex error =
+    CustomTypeError { variantIndex = customIndex, variantSize = variantSize, variantConstructorIndex = variantIndex, error = error } |> Err
 
 
 {-| Define a variant with 1 parameters for a custom type.
@@ -629,7 +686,7 @@ variant1 ctor m1 =
                             ctor ok |> Ok
 
                         Err err ->
-                            variantError index 0 err
+                            variantError index 1 0 err
                 )
                 (getDecoder m1)
         )
@@ -659,10 +716,10 @@ variant2 ctor m1 m2 =
                             ctor ok1 ok2 |> Ok
 
                         ( Err err, _ ) ->
-                            variantError index 0 err
+                            variantError index 2 0 err
 
                         ( _, Err err ) ->
-                            variantError index 1 err
+                            variantError index 2 1 err
                 )
                 (getDecoder m1)
                 (getDecoder m2)
@@ -695,13 +752,13 @@ variant3 ctor m1 m2 m3 =
                             ctor ok1 ok2 ok3 |> Ok
 
                         ( Err err, _, _ ) ->
-                            variantError index 0 err
+                            variantError index 3 0 err
 
                         ( _, Err err, _ ) ->
-                            variantError index 1 err
+                            variantError index 3 1 err
 
                         ( _, _, Err err ) ->
-                            variantError index 2 err
+                            variantError index 3 2 err
                 )
                 (getDecoder m1)
                 (getDecoder m2)
@@ -737,16 +794,16 @@ variant4 ctor m1 m2 m3 m4 =
                             ctor ok1 ok2 ok3 ok4 |> Ok
 
                         T4 (Err err) _ _ _ ->
-                            variantError index 0 err
+                            variantError index 4 0 err
 
                         T4 _ (Err err) _ _ ->
-                            variantError index 1 err
+                            variantError index 4 1 err
 
                         T4 _ _ (Err err) _ ->
-                            variantError index 2 err
+                            variantError index 4 2 err
 
                         T4 _ _ _ (Err err) ->
-                            variantError index 3 err
+                            variantError index 4 3 err
                 )
                 (getDecoder m1)
                 (getDecoder m2)
@@ -785,19 +842,19 @@ variant5 ctor m1 m2 m3 m4 m5 =
                             ctor ok1 ok2 ok3 ok4 ok5 |> Ok
 
                         T5 (Err err) _ _ _ _ ->
-                            variantError index 0 err
+                            variantError index 5 0 err
 
                         T5 _ (Err err) _ _ _ ->
-                            variantError index 1 err
+                            variantError index 5 1 err
 
                         T5 _ _ (Err err) _ _ ->
-                            variantError index 2 err
+                            variantError index 5 2 err
 
                         T5 _ _ _ (Err err) _ ->
-                            variantError index 3 err
+                            variantError index 5 3 err
 
                         T5 _ _ _ _ (Err err) ->
-                            variantError index 4 err
+                            variantError index 5 4 err
                 )
                 (getDecoder m1)
                 (getDecoder m2)
@@ -839,22 +896,22 @@ variant6 ctor m1 m2 m3 m4 m5 m6 =
                             ctor ok1 ok2 ok3 ok4 ok5 ok6 |> Ok
 
                         T6 (Err err) _ _ _ _ _ ->
-                            variantError index 0 err
+                            variantError index 6 0 err
 
                         T6 _ (Err err) _ _ _ _ ->
-                            variantError index 1 err
+                            variantError index 6 1 err
 
                         T6 _ _ (Err err) _ _ _ ->
-                            variantError index 2 err
+                            variantError index 6 2 err
 
                         T6 _ _ _ (Err err) _ _ ->
-                            variantError index 3 err
+                            variantError index 6 3 err
 
                         T6 _ _ _ _ (Err err) _ ->
-                            variantError index 4 err
+                            variantError index 6 4 err
 
                         T6 _ _ _ _ _ (Err err) ->
-                            variantError index 5 err
+                            variantError index 6 5 err
                 )
                 (getDecoder m1)
                 (getDecoder m2)
@@ -901,25 +958,25 @@ variant7 ctor m1 m2 m3 m4 m5 m6 m7 =
                             ctor ok1 ok2 ok3 ok4 ok5 ok6 ok7 |> Ok
 
                         T7 (Err err) _ _ _ _ _ _ ->
-                            variantError index 0 err
+                            variantError index 7 0 err
 
                         T7 _ (Err err) _ _ _ _ _ ->
-                            variantError index 1 err
+                            variantError index 7 1 err
 
                         T7 _ _ (Err err) _ _ _ _ ->
-                            variantError index 2 err
+                            variantError index 7 2 err
 
                         T7 _ _ _ (Err err) _ _ _ ->
-                            variantError index 3 err
+                            variantError index 7 3 err
 
                         T7 _ _ _ _ (Err err) _ _ ->
-                            variantError index 4 err
+                            variantError index 7 4 err
 
                         T7 _ _ _ _ _ (Err err) _ ->
-                            variantError index 5 err
+                            variantError index 7 5 err
 
                         T7 _ _ _ _ _ _ (Err err) ->
-                            variantError index 6 err
+                            variantError index 7 6 err
                 )
                 (getDecoder m1)
                 (getDecoder m2)
@@ -971,28 +1028,28 @@ variant8 ctor m1 m2 m3 m4 m5 m6 m7 m8 =
                             ctor ok1 ok2 ok3 ok4 ok5 ok6 ok7 ok8 |> Ok
 
                         T8 (Err err) _ _ _ _ _ _ _ ->
-                            variantError index 0 err
+                            variantError index 8 0 err
 
                         T8 _ (Err err) _ _ _ _ _ _ ->
-                            variantError index 1 err
+                            variantError index 8 1 err
 
                         T8 _ _ (Err err) _ _ _ _ _ ->
-                            variantError index 2 err
+                            variantError index 8 2 err
 
                         T8 _ _ _ (Err err) _ _ _ _ ->
-                            variantError index 3 err
+                            variantError index 8 3 err
 
                         T8 _ _ _ _ (Err err) _ _ _ ->
-                            variantError index 4 err
+                            variantError index 8 4 err
 
                         T8 _ _ _ _ _ (Err err) _ _ ->
-                            variantError index 5 err
+                            variantError index 8 5 err
 
                         T8 _ _ _ _ _ _ (Err err) _ ->
-                            variantError index 6 err
+                            variantError index 8 6 err
 
                         T8 _ _ _ _ _ _ _ (Err err) ->
-                            variantError index 7 err
+                            variantError index 8 7 err
                 )
                 (getDecoder m1)
                 (getDecoder m2)
