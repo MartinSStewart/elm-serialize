@@ -1,8 +1,8 @@
 module Base exposing (roundtrips, suite)
 
-import Bytes
+import Bytes exposing (Bytes)
 import Bytes.Encode
-import Codec.Bytes as Codec exposing (Bytes, Codec)
+import Codec.Bytes as Codec exposing (Codec)
 import Dict
 import Expect exposing (Expectation)
 import Fuzz exposing (Fuzzer)
@@ -27,7 +27,7 @@ suite =
                 (\_ ->
                     Codec.constant 632
                         |> (\d -> Codec.decode d (Bytes.Encode.sequence [] |> Bytes.Encode.encode))
-                        |> Expect.equal (Just 632)
+                        |> Expect.equal (Ok 632)
                 )
             ]
         ]
@@ -40,7 +40,7 @@ roundtrips fuzzer codec =
             value
                 |> Codec.encode codec
                 |> Codec.decode codec
-                |> Expect.equal (Just value)
+                |> Expect.equal (Ok value)
 
 
 roundtripsWithin : Fuzzer Float -> Codec Float -> Test
@@ -50,7 +50,7 @@ roundtripsWithin fuzzer codec =
             value
                 |> Codec.encode codec
                 |> Codec.decode codec
-                |> Maybe.withDefault -999.1234567
+                |> Result.withDefault -999.1234567
                 |> Expect.within (Expect.Relative 0.000001) value
 
 
@@ -199,18 +199,6 @@ customTests =
                 |> Codec.finishCustom
             )
         ]
-    , describe "with 1 ctor, 1 arg, different id codec"
-        [ roundtrips (Fuzz.map Newtype signedInt32Fuzz)
-            (Codec.customWithIdCodec Codec.unsignedInt8
-                (\f v ->
-                    case v of
-                        Newtype a ->
-                            f a
-                )
-                |> Codec.variant1 Newtype Codec.signedInt32
-                |> Codec.finishCustom
-            )
-        ]
     , describe "with 1 ctor, 6 arg"
         [ roundtrips (Fuzz.map5 (Newtype6 0) signedInt32Fuzz signedInt32Fuzz signedInt32Fuzz signedInt32Fuzz signedInt32Fuzz)
             (Codec.custom
@@ -263,26 +251,31 @@ bimapTests =
     ]
 
 
+{-| Volume must be between 0 and 1.
+-}
+volumeCodec =
+    Codec.float64
+        |> Codec.andThen
+            (\volume ->
+                if volume <= 1 && volume >= 0 then
+                    Ok volume
 
---volumeCodec =
---    Codec.float64
---        |> Codec.andThen
---            (\volume ->
---                if volume <= 1 && volume >= 0 then
---                    Just volume
---
---                else
---                    Nothing
---            )
---            (\volume -> volume)
---
---
---andThenTests : List Test
---andThenTests =
---    [ roundtrips (Fuzz.floatRange 0 1) <| volumeCodec
---    , test "andThen fails on invalid binary data." <|
---        \_ -> 5 |> Codec.encodeToValue volumeCodec |> Codec.decodeValue volumeCodec |> Expect.equal Nothing
---    ]
+                else
+                    Err "Volume is outside of valid range."
+            )
+            (\volume -> volume)
+
+
+andThenTests : List Test
+andThenTests =
+    [ roundtrips (Fuzz.floatRange 0 1) <| volumeCodec
+    , test "andThen fails on invalid binary data." <|
+        \_ ->
+            5
+                |> Codec.encode volumeCodec
+                |> Codec.decode volumeCodec
+                |> Expect.equal (Codec.BaseError "Volume is outside of valid range." |> Err)
+    ]
 
 
 type Peano

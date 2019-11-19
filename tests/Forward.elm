@@ -24,7 +24,7 @@ compatible fuzzer map oldCodec newCodec =
             value
                 |> Codec.encode oldCodec
                 |> Codec.decode newCodec
-                |> Expect.equal (Just <| map value)
+                |> Expect.equal (Ok <| map value)
 
 
 forward : Fuzzer old -> (old -> new) -> Codec old -> Codec new -> Test

@@ -1,15 +1,13 @@
 module Codec.Bytes exposing
-    ( Codec
-    , Encoder
-    , Bytes
-    --    , Decoder
-    --    , string, bool, char, float64, float32, signedInt32, unsignedInt32, signedInt16, unsignedInt16, signedInt8, unsignedInt8, bytes
-    --    , maybe, list, array, dict, set, tuple, triple, result
-    --    , ObjectCodec, object, field, finishObject
-    --    , CustomCodec, custom, variant0, variant1, variant2, variant3, variant4, variant5, variant6, variant7, variant8
-    --    , map
-    --    , constant, lazy, customWithIdCodec
-    --    , decode, encode, finishCustom, getDecoder, getEncoder
+    ( Codec, Encoder, Error(..)
+    , Decoder
+    , string, bool, char, float64, float32, signedInt32, unsignedInt32, signedInt16, unsignedInt16, signedInt8, unsignedInt8, bytes
+    , maybe, list, array, dict, set, tuple, triple, result
+    , ObjectCodec, object, field, finishObject
+    , CustomCodec, custom, variant0, variant1, variant2, variant3, variant4, variant5, variant6, variant7, variant8
+    , map, andThen
+    , constant, lazy
+    , decode, encode, finishCustom, getDecoder, getEncoder
     )
 
 {-| A `Codec a` contains a `Bytes.Decoder a` and the corresponding `a -> Bytes.Encoder`.
@@ -17,7 +15,7 @@ module Codec.Bytes exposing
 
 # Definition
 
-@docs Codec, Endianness, Encoder, Bytes
+@docs Codec, Encoder, Bytes, Error
 
 
 # Decode
@@ -52,12 +50,12 @@ module Codec.Bytes exposing
 
 # Mapping
 
-@docs map
+@docs map, andThen
 
 
 # Fancy Codecs
 
-@docs constant, lazy, customWithIdCodec
+@docs constant, lazy
 
 -}
 
@@ -67,6 +65,7 @@ import Bytes.Decode as BD
 import Bytes.Encode as BE
 import Dict exposing (Dict)
 import Set exposing (Set)
+import Toop exposing (T4(..), T5(..), T6(..), T7(..), T8(..))
 
 
 
@@ -84,26 +83,22 @@ type Codec a
 
 type Error
     = BaseError String
-    | VariantError { customIndex : Int, variantIndex : Int, error : Error }
+    | CustomTypeError { customIndex : Int, variantIndex : Int, error : Error }
     | NoVariantMatches
-    | FieldError { fieldIndex : Int, error : Error }
+    | RecordError { fieldIndex : Int, error : Error }
     | ListError { listIndex : Int, error : Error }
     | TupleError { tupleIndex : Int, error : Error }
+
+
+errorToString : Error -> String
+errorToString =
+    Debug.todo ""
 
 
 {-| Describes how to generate a sequence of bytes.
 -}
 type alias Encoder =
     BE.Encoder
-
-
-{-| A sequence of bytes. Refer to the [elm/bytes docs][bytes] for more information.
-
-[bytes]: https://package.elm-lang.org/packages/elm/bytes/latest/Bytes#Bytes
-
--}
-type alias Bytes =
-    Bytes.Bytes
 
 
 
@@ -130,7 +125,7 @@ getDecoder (Codec m) =
 
 {-| Run a `Codec` to turn a sequence of bytes into an Elm value.
 -}
-decode : Codec a -> Bytes -> Result Error a
+decode : Codec a -> Bytes.Bytes -> Result Error a
 decode codec bytes_ =
     case BD.decode (getDecoder codec) bytes_ of
         Just value ->
@@ -153,7 +148,7 @@ getEncoder (Codec m) =
 
 {-| Convert an Elm value into a sequence of bytes.
 -}
-encode : Codec a -> a -> Bytes
+encode : Codec a -> a -> Bytes.Bytes
 encode codec value =
     getEncoder codec value |> BE.encode
 
@@ -475,7 +470,7 @@ result errorCodec valueCodec =
         Codec.bytes |> Codec.map pngEncoder pngDecoder
 
 -}
-bytes : Codec Bytes
+bytes : Codec Bytes.Bytes
 bytes =
     Codec
         { encoder =
@@ -545,7 +540,7 @@ field getter codec (ObjectCodec ocodec) =
                             Err fError
 
                         ( _, Err xError ) ->
-                            FieldError { fieldIndex = ocodec.fieldCount, error = xError } |> Err
+                            RecordError { fieldIndex = ocodec.fieldCount, error = xError } |> Err
                 )
                 ocodec.decoder
                 (getDecoder codec)
@@ -652,7 +647,7 @@ variant0 ctor =
 
 
 variantError customIndex variantIndex error =
-    VariantError { customIndex = customIndex, variantIndex = variantIndex, error = error } |> Err
+    CustomTypeError { customIndex = customIndex, variantIndex = variantIndex, error = error } |> Err
 
 
 {-| Define a variant with 1 parameters for a custom type.
@@ -717,212 +712,346 @@ variant2 ctor m1 m2 =
         )
 
 
+{-| Define a variant with 3 parameters for a custom type.
+-}
+variant3 :
+    (a -> b -> c -> v)
+    -> Codec a
+    -> Codec b
+    -> Codec c
+    -> CustomCodec ((a -> b -> c -> Encoder) -> partial) v
+    -> CustomCodec partial v
+variant3 ctor m1 m2 m3 =
+    variant
+        (\c v1 v2 v3 ->
+            c
+                [ getEncoder m1 v1
+                , getEncoder m2 v2
+                , getEncoder m3 v3
+                ]
+        )
+        (\index ->
+            BD.map3
+                (\v1 v2 v3 ->
+                    case ( v1, v2, v3 ) of
+                        ( Ok ok1, Ok ok2, Ok ok3 ) ->
+                            ctor ok1 ok2 ok3 |> Ok
 
---{-| Define a variant with 3 parameters for a custom type.
----}
---variant3 :
---    (a -> b -> c -> v)
---    -> Codec a
---    -> Codec b
---    -> Codec c
---    -> CustomCodec ((a -> b -> c -> Encoder) -> partial) v
---    -> CustomCodec partial v
---variant3 ctor m1 m2 m3 =
---    variant
---        (\c v1 v2 v3 ->
---            c
---                [ getEncoder m1 v1
---                , getEncoder m2 v2
---                , getEncoder m3 v3
---                ]
---        )
---        (BD.map3 ctor
---            (getDecoder m1)
---            (getDecoder m2)
---            (getDecoder m3)
---        )
---
---
---{-| Define a variant with 4 parameters for a custom type.
----}
---variant4 :
---    (a -> b -> c -> d -> v)
---    -> Codec a
---    -> Codec b
---    -> Codec c
---    -> Codec d
---    -> CustomCodec ((a -> b -> c -> d -> Encoder) -> partial) v
---    -> CustomCodec partial v
---variant4 ctor m1 m2 m3 m4 =
---    variant
---        (\c v1 v2 v3 v4 ->
---            c
---                [ getEncoder m1 v1
---                , getEncoder m2 v2
---                , getEncoder m3 v3
---                , getEncoder m4 v4
---                ]
---        )
---        (BD.map4 ctor
---            (getDecoder m1)
---            (getDecoder m2)
---            (getDecoder m3)
---            (getDecoder m4)
---        )
---
---
---{-| Define a variant with 5 parameters for a custom type.
----}
---variant5 :
---    (a -> b -> c -> d -> e -> v)
---    -> Codec a
---    -> Codec b
---    -> Codec c
---    -> Codec d
---    -> Codec e
---    -> CustomCodec ((a -> b -> c -> d -> e -> Encoder) -> partial) v
---    -> CustomCodec partial v
---variant5 ctor m1 m2 m3 m4 m5 =
---    variant
---        (\c v1 v2 v3 v4 v5 ->
---            c
---                [ getEncoder m1 v1
---                , getEncoder m2 v2
---                , getEncoder m3 v3
---                , getEncoder m4 v4
---                , getEncoder m5 v5
---                ]
---        )
---        (BD.map5 ctor
---            (getDecoder m1)
---            (getDecoder m2)
---            (getDecoder m3)
---            (getDecoder m4)
---            (getDecoder m5)
---        )
---
---
---{-| Define a variant with 6 parameters for a custom type.
----}
---variant6 :
---    (a -> b -> c -> d -> e -> f -> v)
---    -> Codec a
---    -> Codec b
---    -> Codec c
---    -> Codec d
---    -> Codec e
---    -> Codec f
---    -> CustomCodec ((a -> b -> c -> d -> e -> f -> Encoder) -> partial) v
---    -> CustomCodec partial v
---variant6 ctor m1 m2 m3 m4 m5 m6 =
---    variant
---        (\c v1 v2 v3 v4 v5 v6 ->
---            c
---                [ getEncoder m1 v1
---                , getEncoder m2 v2
---                , getEncoder m3 v3
---                , getEncoder m4 v4
---                , getEncoder m5 v5
---                , getEncoder m6 v6
---                ]
---        )
---        (BD.map5 (\a b c d ( e, f ) -> ctor a b c d e f)
---            (getDecoder m1)
---            (getDecoder m2)
---            (getDecoder m3)
---            (getDecoder m4)
---            (BD.map2 Tuple.pair
---                (getDecoder m5)
---                (getDecoder m6)
---            )
---        )
---
---
---{-| Define a variant with 7 parameters for a custom type.
----}
---variant7 :
---    (a -> b -> c -> d -> e -> f -> g -> v)
---    -> Codec a
---    -> Codec b
---    -> Codec c
---    -> Codec d
---    -> Codec e
---    -> Codec f
---    -> Codec g
---    -> CustomCodec ((a -> b -> c -> d -> e -> f -> g -> Encoder) -> partial) v
---    -> CustomCodec partial v
---variant7 ctor m1 m2 m3 m4 m5 m6 m7 =
---    variant
---        (\c v1 v2 v3 v4 v5 v6 v7 ->
---            c
---                [ getEncoder m1 v1
---                , getEncoder m2 v2
---                , getEncoder m3 v3
---                , getEncoder m4 v4
---                , getEncoder m5 v5
---                , getEncoder m6 v6
---                , getEncoder m7 v7
---                ]
---        )
---        (BD.map5 (\a b c ( d, e ) ( f, g ) -> ctor a b c d e f g)
---            (getDecoder m1)
---            (getDecoder m2)
---            (getDecoder m3)
---            (BD.map2 Tuple.pair
---                (getDecoder m4)
---                (getDecoder m5)
---            )
---            (BD.map2 Tuple.pair
---                (getDecoder m6)
---                (getDecoder m7)
---            )
---        )
---
---
---{-| Define a variant with 8 parameters for a custom type.
----}
---variant8 :
---    (a -> b -> c -> d -> e -> f -> g -> h -> v)
---    -> Codec a
---    -> Codec b
---    -> Codec c
---    -> Codec d
---    -> Codec e
---    -> Codec f
---    -> Codec g
---    -> Codec h
---    -> CustomCodec ((a -> b -> c -> d -> e -> f -> g -> h -> Encoder) -> partial) v
---    -> CustomCodec partial v
---variant8 ctor m1 m2 m3 m4 m5 m6 m7 m8 =
---    variant
---        (\c v1 v2 v3 v4 v5 v6 v7 v8 ->
---            c
---                [ getEncoder m1 v1
---                , getEncoder m2 v2
---                , getEncoder m3 v3
---                , getEncoder m4 v4
---                , getEncoder m5 v5
---                , getEncoder m6 v6
---                , getEncoder m7 v7
---                , getEncoder m8 v8
---                ]
---        )
---        (BD.map5 (\a b ( c, d ) ( e, f ) ( g, h ) -> ctor a b c d e f g h)
---            (getDecoder m1)
---            (getDecoder m2)
---            (BD.map2 Tuple.pair
---                (getDecoder m3)
---                (getDecoder m4)
---            )
---            (BD.map2 Tuple.pair
---                (getDecoder m5)
---                (getDecoder m6)
---            )
---            (BD.map2 Tuple.pair
---                (getDecoder m7)
---                (getDecoder m8)
---            )
---        )
+                        ( Err err, _, _ ) ->
+                            variantError index 0 err
+
+                        ( _, Err err, _ ) ->
+                            variantError index 1 err
+
+                        ( _, _, Err err ) ->
+                            variantError index 2 err
+                )
+                (getDecoder m1)
+                (getDecoder m2)
+                (getDecoder m3)
+        )
+
+
+{-| Define a variant with 4 parameters for a custom type.
+-}
+variant4 :
+    (a -> b -> c -> d -> v)
+    -> Codec a
+    -> Codec b
+    -> Codec c
+    -> Codec d
+    -> CustomCodec ((a -> b -> c -> d -> Encoder) -> partial) v
+    -> CustomCodec partial v
+variant4 ctor m1 m2 m3 m4 =
+    variant
+        (\c v1 v2 v3 v4 ->
+            c
+                [ getEncoder m1 v1
+                , getEncoder m2 v2
+                , getEncoder m3 v3
+                , getEncoder m4 v4
+                ]
+        )
+        (\index ->
+            BD.map4
+                (\v1 v2 v3 v4 ->
+                    case T4 v1 v2 v3 v4 of
+                        T4 (Ok ok1) (Ok ok2) (Ok ok3) (Ok ok4) ->
+                            ctor ok1 ok2 ok3 ok4 |> Ok
+
+                        T4 (Err err) _ _ _ ->
+                            variantError index 0 err
+
+                        T4 _ (Err err) _ _ ->
+                            variantError index 1 err
+
+                        T4 _ _ (Err err) _ ->
+                            variantError index 2 err
+
+                        T4 _ _ _ (Err err) ->
+                            variantError index 3 err
+                )
+                (getDecoder m1)
+                (getDecoder m2)
+                (getDecoder m3)
+                (getDecoder m4)
+        )
+
+
+{-| Define a variant with 5 parameters for a custom type.
+-}
+variant5 :
+    (a -> b -> c -> d -> e -> v)
+    -> Codec a
+    -> Codec b
+    -> Codec c
+    -> Codec d
+    -> Codec e
+    -> CustomCodec ((a -> b -> c -> d -> e -> Encoder) -> partial) v
+    -> CustomCodec partial v
+variant5 ctor m1 m2 m3 m4 m5 =
+    variant
+        (\c v1 v2 v3 v4 v5 ->
+            c
+                [ getEncoder m1 v1
+                , getEncoder m2 v2
+                , getEncoder m3 v3
+                , getEncoder m4 v4
+                , getEncoder m5 v5
+                ]
+        )
+        (\index ->
+            BD.map5
+                (\v1 v2 v3 v4 v5 ->
+                    case T5 v1 v2 v3 v4 v5 of
+                        T5 (Ok ok1) (Ok ok2) (Ok ok3) (Ok ok4) (Ok ok5) ->
+                            ctor ok1 ok2 ok3 ok4 ok5 |> Ok
+
+                        T5 (Err err) _ _ _ _ ->
+                            variantError index 0 err
+
+                        T5 _ (Err err) _ _ _ ->
+                            variantError index 1 err
+
+                        T5 _ _ (Err err) _ _ ->
+                            variantError index 2 err
+
+                        T5 _ _ _ (Err err) _ ->
+                            variantError index 3 err
+
+                        T5 _ _ _ _ (Err err) ->
+                            variantError index 4 err
+                )
+                (getDecoder m1)
+                (getDecoder m2)
+                (getDecoder m3)
+                (getDecoder m4)
+                (getDecoder m5)
+        )
+
+
+{-| Define a variant with 6 parameters for a custom type.
+-}
+variant6 :
+    (a -> b -> c -> d -> e -> f -> v)
+    -> Codec a
+    -> Codec b
+    -> Codec c
+    -> Codec d
+    -> Codec e
+    -> Codec f
+    -> CustomCodec ((a -> b -> c -> d -> e -> f -> Encoder) -> partial) v
+    -> CustomCodec partial v
+variant6 ctor m1 m2 m3 m4 m5 m6 =
+    variant
+        (\c v1 v2 v3 v4 v5 v6 ->
+            c
+                [ getEncoder m1 v1
+                , getEncoder m2 v2
+                , getEncoder m3 v3
+                , getEncoder m4 v4
+                , getEncoder m5 v5
+                , getEncoder m6 v6
+                ]
+        )
+        (\index ->
+            BD.map5
+                (\v1 v2 v3 v4 ( v5, v6 ) ->
+                    case T6 v1 v2 v3 v4 v5 v6 of
+                        T6 (Ok ok1) (Ok ok2) (Ok ok3) (Ok ok4) (Ok ok5) (Ok ok6) ->
+                            ctor ok1 ok2 ok3 ok4 ok5 ok6 |> Ok
+
+                        T6 (Err err) _ _ _ _ _ ->
+                            variantError index 0 err
+
+                        T6 _ (Err err) _ _ _ _ ->
+                            variantError index 1 err
+
+                        T6 _ _ (Err err) _ _ _ ->
+                            variantError index 2 err
+
+                        T6 _ _ _ (Err err) _ _ ->
+                            variantError index 3 err
+
+                        T6 _ _ _ _ (Err err) _ ->
+                            variantError index 4 err
+
+                        T6 _ _ _ _ _ (Err err) ->
+                            variantError index 5 err
+                )
+                (getDecoder m1)
+                (getDecoder m2)
+                (getDecoder m3)
+                (getDecoder m4)
+                (BD.map2 Tuple.pair
+                    (getDecoder m5)
+                    (getDecoder m6)
+                )
+        )
+
+
+{-| Define a variant with 7 parameters for a custom type.
+-}
+variant7 :
+    (a -> b -> c -> d -> e -> f -> g -> v)
+    -> Codec a
+    -> Codec b
+    -> Codec c
+    -> Codec d
+    -> Codec e
+    -> Codec f
+    -> Codec g
+    -> CustomCodec ((a -> b -> c -> d -> e -> f -> g -> Encoder) -> partial) v
+    -> CustomCodec partial v
+variant7 ctor m1 m2 m3 m4 m5 m6 m7 =
+    variant
+        (\c v1 v2 v3 v4 v5 v6 v7 ->
+            c
+                [ getEncoder m1 v1
+                , getEncoder m2 v2
+                , getEncoder m3 v3
+                , getEncoder m4 v4
+                , getEncoder m5 v5
+                , getEncoder m6 v6
+                , getEncoder m7 v7
+                ]
+        )
+        (\index ->
+            BD.map5
+                (\v1 v2 v3 ( v4, v5 ) ( v6, v7 ) ->
+                    case T7 v1 v2 v3 v4 v5 v6 v7 of
+                        T7 (Ok ok1) (Ok ok2) (Ok ok3) (Ok ok4) (Ok ok5) (Ok ok6) (Ok ok7) ->
+                            ctor ok1 ok2 ok3 ok4 ok5 ok6 ok7 |> Ok
+
+                        T7 (Err err) _ _ _ _ _ _ ->
+                            variantError index 0 err
+
+                        T7 _ (Err err) _ _ _ _ _ ->
+                            variantError index 1 err
+
+                        T7 _ _ (Err err) _ _ _ _ ->
+                            variantError index 2 err
+
+                        T7 _ _ _ (Err err) _ _ _ ->
+                            variantError index 3 err
+
+                        T7 _ _ _ _ (Err err) _ _ ->
+                            variantError index 4 err
+
+                        T7 _ _ _ _ _ (Err err) _ ->
+                            variantError index 5 err
+
+                        T7 _ _ _ _ _ _ (Err err) ->
+                            variantError index 6 err
+                )
+                (getDecoder m1)
+                (getDecoder m2)
+                (getDecoder m3)
+                (BD.map2 Tuple.pair
+                    (getDecoder m4)
+                    (getDecoder m5)
+                )
+                (BD.map2 Tuple.pair
+                    (getDecoder m6)
+                    (getDecoder m7)
+                )
+        )
+
+
+{-| Define a variant with 8 parameters for a custom type.
+-}
+variant8 :
+    (a -> b -> c -> d -> e -> f -> g -> h -> v)
+    -> Codec a
+    -> Codec b
+    -> Codec c
+    -> Codec d
+    -> Codec e
+    -> Codec f
+    -> Codec g
+    -> Codec h
+    -> CustomCodec ((a -> b -> c -> d -> e -> f -> g -> h -> Encoder) -> partial) v
+    -> CustomCodec partial v
+variant8 ctor m1 m2 m3 m4 m5 m6 m7 m8 =
+    variant
+        (\c v1 v2 v3 v4 v5 v6 v7 v8 ->
+            c
+                [ getEncoder m1 v1
+                , getEncoder m2 v2
+                , getEncoder m3 v3
+                , getEncoder m4 v4
+                , getEncoder m5 v5
+                , getEncoder m6 v6
+                , getEncoder m7 v7
+                , getEncoder m8 v8
+                ]
+        )
+        (\index ->
+            BD.map5
+                (\v1 v2 ( v3, v4 ) ( v5, v6 ) ( v7, v8 ) ->
+                    case T8 v1 v2 v3 v4 v5 v6 v7 v8 of
+                        T8 (Ok ok1) (Ok ok2) (Ok ok3) (Ok ok4) (Ok ok5) (Ok ok6) (Ok ok7) (Ok ok8) ->
+                            ctor ok1 ok2 ok3 ok4 ok5 ok6 ok7 ok8 |> Ok
+
+                        T8 (Err err) _ _ _ _ _ _ _ ->
+                            variantError index 0 err
+
+                        T8 _ (Err err) _ _ _ _ _ _ ->
+                            variantError index 1 err
+
+                        T8 _ _ (Err err) _ _ _ _ _ ->
+                            variantError index 2 err
+
+                        T8 _ _ _ (Err err) _ _ _ _ ->
+                            variantError index 3 err
+
+                        T8 _ _ _ _ (Err err) _ _ _ ->
+                            variantError index 4 err
+
+                        T8 _ _ _ _ _ (Err err) _ _ ->
+                            variantError index 5 err
+
+                        T8 _ _ _ _ _ _ (Err err) _ ->
+                            variantError index 6 err
+
+                        T8 _ _ _ _ _ _ _ (Err err) ->
+                            variantError index 7 err
+                )
+                (getDecoder m1)
+                (getDecoder m2)
+                (BD.map2 Tuple.pair
+                    (getDecoder m3)
+                    (getDecoder m4)
+                )
+                (BD.map2 Tuple.pair
+                    (getDecoder m5)
+                    (getDecoder m6)
+                )
+                (BD.map2 Tuple.pair
+                    (getDecoder m7)
+                    (getDecoder m8)
+                )
+        )
 
 
 {-| Build a `Codec` for a fully specified custom type.
