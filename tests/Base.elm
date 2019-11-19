@@ -1,5 +1,6 @@
 module Base exposing (roundtrips, suite)
 
+import Basics.Extra
 import Bytes exposing (Bytes)
 import Bytes.Encode
 import Codec.Bytes as Codec exposing (Codec)
@@ -8,6 +9,7 @@ import Expect exposing (Expectation)
 import Fuzz exposing (Fuzzer)
 import Set
 import Test exposing (Test, describe, fuzz, test)
+import Toop exposing (T1(..), T6(..))
 
 
 suite : Test
@@ -43,39 +45,22 @@ roundtrips fuzzer codec =
                 |> Expect.equal (Ok value)
 
 
-roundtripsWithin : Fuzzer Float -> Codec Float -> Test
-roundtripsWithin fuzzer codec =
-    fuzz fuzzer "is a roundtrip" <|
-        \value ->
-            value
-                |> Codec.encode codec
-                |> Codec.decode codec
-                |> Result.withDefault -999.1234567
-                |> Expect.within (Expect.Relative 0.000001) value
-
-
 basicTests : List Test
 basicTests =
     [ describe "Codec.string"
         [ roundtrips Fuzz.string Codec.string
         ]
-    , describe "Codec.signedInt"
-        [ roundtrips signedInt32Fuzz Codec.signedInt32
-        ]
-    , describe "Codec.unsignedInt"
-        [ roundtrips unsignedInt32Fuzz Codec.unsignedInt32
+    , describe "Codec.int"
+        [ roundtrips maxRangeIntFuzz Codec.int
         ]
     , describe "Codec.float64"
-        [ roundtrips Fuzz.float Codec.float64
-        ]
-    , describe "Codec.float32"
-        [ roundtripsWithin Fuzz.float Codec.float32
+        [ roundtrips Fuzz.float Codec.float
         ]
     , describe "Codec.bool"
         [ roundtrips Fuzz.bool Codec.bool
         ]
     , describe "Codec.char"
-        [ roundtrips Fuzz.char Codec.char
+        [ roundtrips charFuzz Codec.char
         ]
     , describe "Codec.bytes"
         [ roundtrips fuzzBytes Codec.bytes
@@ -85,44 +70,46 @@ basicTests =
 
 fuzzBytes : Fuzzer Bytes
 fuzzBytes =
-    Fuzz.list unsignedInt32Fuzz |> Fuzz.map (List.map (Bytes.Encode.unsignedInt32 Bytes.LE) >> Bytes.Encode.sequence >> Bytes.Encode.encode)
+    Fuzz.list maxRangeIntFuzz |> Fuzz.map (List.map (Bytes.Encode.unsignedInt32 Bytes.LE) >> Bytes.Encode.sequence >> Bytes.Encode.encode)
 
 
 containersTests : List Test
 containersTests =
     [ describe "Codec.array"
-        [ roundtrips (Fuzz.array signedInt32Fuzz) (Codec.array Codec.signedInt32)
+        [ roundtrips (Fuzz.array maxRangeIntFuzz) (Codec.array Codec.int)
         ]
     , describe "Codec.list"
-        [ roundtrips (Fuzz.list signedInt32Fuzz) (Codec.list Codec.signedInt32)
+        [ roundtrips (Fuzz.list maxRangeIntFuzz) (Codec.list Codec.int)
         ]
     , describe "Codec.dict"
         [ roundtrips
-            (Fuzz.map2 Tuple.pair Fuzz.string signedInt32Fuzz
+            (Fuzz.map2 Tuple.pair Fuzz.string maxRangeIntFuzz
                 |> Fuzz.list
                 |> Fuzz.map Dict.fromList
             )
-            (Codec.dict Codec.string Codec.signedInt32)
+            (Codec.dict Codec.string Codec.int)
         ]
     , describe "Codec.set"
         [ roundtrips
-            (Fuzz.list signedInt32Fuzz |> Fuzz.map Set.fromList)
-            (Codec.set Codec.signedInt32)
+            (Fuzz.list maxRangeIntFuzz |> Fuzz.map Set.fromList)
+            (Codec.set Codec.int)
         ]
     , describe "Codec.tuple"
         [ roundtrips
-            (Fuzz.tuple ( signedInt32Fuzz, signedInt32Fuzz ))
-            (Codec.tuple Codec.signedInt32 Codec.signedInt32)
+            (Fuzz.tuple ( maxRangeIntFuzz, maxRangeIntFuzz ))
+            (Codec.tuple Codec.int Codec.int)
         ]
     ]
 
 
-unsignedInt32Fuzz =
-    Fuzz.intRange 0 4294967295
+maxRangeIntFuzz =
+    Fuzz.intRange Basics.Extra.minSafeInteger Basics.Extra.maxSafeInteger
 
 
-signedInt32Fuzz =
-    Fuzz.intRange -2147483648 2147483647
+charFuzz =
+    [ '😀', 'ß', Char.toUpper 'ß', 'a', '吧', '吗', '\t' ]
+        |> List.map Fuzz.constant
+        |> Fuzz.oneOf
 
 
 objectTests : List Test
@@ -134,9 +121,9 @@ objectTests =
             )
         ]
     , describe "with 1 field"
-        [ roundtrips (Fuzz.map (\i -> { fname = i }) signedInt32Fuzz)
+        [ roundtrips (Fuzz.map (\i -> { fname = i }) maxRangeIntFuzz)
             (Codec.record (\i -> { fname = i })
-                |> Codec.field .fname Codec.signedInt32
+                |> Codec.recordField .fname Codec.int
                 |> Codec.finishRecord
             )
         ]
@@ -148,8 +135,8 @@ objectTests =
                     , b = b
                     }
                 )
-                signedInt32Fuzz
-                signedInt32Fuzz
+                maxRangeIntFuzz
+                maxRangeIntFuzz
             )
             (Codec.record
                 (\a b ->
@@ -157,20 +144,12 @@ objectTests =
                     , b = b
                     }
                 )
-                |> Codec.field .a Codec.signedInt32
-                |> Codec.field .b Codec.signedInt32
+                |> Codec.recordField .a Codec.int
+                |> Codec.recordField .b Codec.int
                 |> Codec.finishRecord
             )
         ]
     ]
-
-
-type Newtype a
-    = Newtype a
-
-
-type Newtype6 a b c d e f
-    = Newtype6 a b c d e f
 
 
 customTests : List Test
@@ -188,26 +167,26 @@ customTests =
             )
         ]
     , describe "with 1 ctor, 1 arg"
-        [ roundtrips (Fuzz.map Newtype signedInt32Fuzz)
+        [ roundtrips (Fuzz.map T1 maxRangeIntFuzz)
             (Codec.customType
                 (\f v ->
                     case v of
-                        Newtype a ->
+                        T1 a ->
                             f a
                 )
-                |> Codec.variant1 Newtype Codec.signedInt32
+                |> Codec.variant1 T1 Codec.int
                 |> Codec.finishCustomType
             )
         ]
     , describe "with 1 ctor, 6 arg"
-        [ roundtrips (Fuzz.map5 (Newtype6 0) signedInt32Fuzz signedInt32Fuzz signedInt32Fuzz signedInt32Fuzz signedInt32Fuzz)
+        [ roundtrips (Fuzz.map5 (T6 0) maxRangeIntFuzz maxRangeIntFuzz maxRangeIntFuzz maxRangeIntFuzz maxRangeIntFuzz)
             (Codec.customType
                 (\function v ->
                     case v of
-                        Newtype6 a b c d e f ->
+                        T6 a b c d e f ->
                             function a b c d e f
                 )
-                |> Codec.variant6 Newtype6 Codec.signedInt32 Codec.signedInt32 Codec.signedInt32 Codec.signedInt32 Codec.signedInt32 Codec.signedInt32
+                |> Codec.variant6 T6 Codec.int Codec.int Codec.int Codec.int Codec.int Codec.int
                 |> Codec.finishCustomType
             )
         ]
@@ -224,12 +203,12 @@ customTests =
             codec =
                 Codec.customType match
                     |> Codec.variant0 Nothing
-                    |> Codec.variant1 Just Codec.signedInt32
+                    |> Codec.variant1 Just Codec.int
                     |> Codec.finishCustomType
 
             fuzzers =
                 [ ( "1st ctor", Fuzz.constant Nothing )
-                , ( "2nd ctor", Fuzz.map Just signedInt32Fuzz )
+                , ( "2nd ctor", Fuzz.map Just maxRangeIntFuzz )
                 ]
         in
         fuzzers
@@ -247,14 +226,14 @@ bimapTests =
         Codec.map
             (\x -> x * 2)
             (\x -> x / 2)
-            Codec.float64
+            Codec.float
     ]
 
 
 {-| Volume must be between 0 and 1.
 -}
 volumeCodec =
-    Codec.float64
+    Codec.float
         |> Codec.andThen
             (\volume ->
                 if volume <= 1 && volume >= 0 then
@@ -302,7 +281,7 @@ errorTests =
                                     encodeJust v
                         )
                         |> Codec.variant0 Nothing
-                        |> Codec.variant1 Just Codec.signedInt32
+                        |> Codec.variant1 Just Codec.int
                         |> Codec.finishCustomType
 
                 codecBad =
@@ -317,7 +296,7 @@ errorTests =
                         )
                         |> Codec.variant0 Nothing
                         |> Codec.variant0 Nothing
-                        |> Codec.variant1 Just Codec.signedInt32
+                        |> Codec.variant1 Just Codec.int
                         |> Codec.finishCustomType
             in
             Codec.encode codecBad (Just 0) |> Codec.decode codec |> Expect.equal (Err Codec.NoVariantMatches)
@@ -341,10 +320,10 @@ errorTests =
             let
                 codec =
                     Codec.record Record
-                        |> Codec.field .a Codec.unsignedInt32
-                        |> Codec.field .b volumeCodec
-                        |> Codec.field .c Codec.string
-                        |> Codec.field .d Codec.string
+                        |> Codec.recordField .a Codec.int
+                        |> Codec.recordField .b volumeCodec
+                        |> Codec.recordField .c Codec.string
+                        |> Codec.recordField .d Codec.string
                         |> Codec.finishRecord
             in
             Codec.encode codec { a = 0, b = -1, c = "", d = "" }
@@ -396,10 +375,10 @@ maybeTests =
         [ roundtrips
             (Fuzz.oneOf
                 [ Fuzz.constant Nothing
-                , Fuzz.map Just signedInt32Fuzz
+                , Fuzz.map Just maxRangeIntFuzz
                 ]
             )
           <|
-            Codec.maybe Codec.signedInt32
+            Codec.maybe Codec.int
         ]
     ]

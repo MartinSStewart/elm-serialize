@@ -1,13 +1,14 @@
 module Codec.Bytes exposing
     ( Codec, Encoder, Error(..)
-    , Decoder
-    , string, bool, char, float64, float32, signedInt32, unsignedInt32, signedInt16, unsignedInt16, signedInt8, unsignedInt8, bytes
+    , Decoder, getDecoder, decode
+    , getEncoder, encode
+    , string, bool, char, float, int, bytes
     , maybe, list, array, dict, set, tuple, triple, result
-    , field
-    , CustomCodec, variant0, variant1, variant2, variant3, variant4, variant5, variant6, variant7, variant8
+    , RecordCodec, record, recordField
+    , CustomTypeCodec, customType, variant0, variant1, variant2, variant3, variant4, variant5, variant6, variant7, variant8, finishCustomType
     , map, andThen
     , constant, lazy
-    , RecordCodec, customType, decode, encode, finishCustomType, finishRecord, getDecoder, getEncoder, record
+    , finishRecord
     )
 
 {-| A `Codec a` contains a `Bytes.Decoder a` and the corresponding `a -> Bytes.Encoder`.
@@ -20,17 +21,17 @@ module Codec.Bytes exposing
 
 # Decode
 
-@docs Decoder, decoder, decodeValue
+@docs Decoder, getDecoder, decode
 
 
 # Encode
 
-@docs encoder, encodeToValue
+@docs getEncoder, encode
 
 
 # Primitives
 
-@docs string, bool, char, float64, float32, signedInt32, unsignedInt32, signedInt16, unsignedInt16, signedInt8, unsignedInt8, bytes
+@docs string, bool, char, float, int, bytes
 
 
 # Data Structures
@@ -40,12 +41,12 @@ module Codec.Bytes exposing
 
 # Object Primitives
 
-@docs ObjectCodec, object, field, finishObject
+@docs RecordCodec, record, recordField, finishObject
 
 
 # Custom Types
 
-@docs CustomCodec, custom, variant0, variant1, variant2, variant3, variant4, variant5, variant6, variant7, variant8, buildCustom
+@docs CustomTypeCodec, customType, variant0, variant1, variant2, variant3, variant4, variant5, variant6, variant7, variant8, finishCustomType
 
 
 # Mapping
@@ -218,59 +219,16 @@ bool =
 
 {-| `Codec` between a signed 32-bit integer and an Elm `Int`
 -}
-signedInt32 : Codec Int
-signedInt32 =
-    build (BE.signedInt32 endian) (BD.signedInt32 endian |> BD.map Ok)
-
-
-{-| `Codec` between an unsigned 32-bit integer and an Elm `Int`
--}
-unsignedInt32 : Codec Int
-unsignedInt32 =
-    build (BE.unsignedInt32 endian) (BD.unsignedInt32 endian |> BD.map Ok)
-
-
-{-| `Codec` between a signed 16-bit integer and an Elm `Int`
--}
-signedInt16 : Codec Int
-signedInt16 =
-    build (BE.signedInt16 endian) (BD.signedInt16 endian |> BD.map Ok)
-
-
-{-| `Codec` between an unsigned 16-bit integer and an Elm `Int`
--}
-unsignedInt16 : Codec Int
-unsignedInt16 =
-    build (BE.unsignedInt16 endian) (BD.unsignedInt16 endian |> BD.map Ok)
-
-
-{-| `Codec` between a signed 8-bit integer and an Elm `Int`
--}
-signedInt8 : Codec Int
-signedInt8 =
-    build BE.signedInt8 (BD.signedInt8 |> BD.map Ok)
-
-
-{-| `Codec` between an unsigned 8-bit integer and an Elm `Int`
--}
-unsignedInt8 : Codec Int
-unsignedInt8 =
-    build BE.unsignedInt8 (BD.unsignedInt8 |> BD.map Ok)
+int : Codec Int
+int =
+    build (toFloat >> BE.float64 endian) (BD.float64 endian |> BD.map (round >> Ok))
 
 
 {-| `Codec` between a 64-bit float and an Elm `Float`
 -}
-float64 : Codec Float
-float64 =
+float : Codec Float
+float =
     build (BE.float64 endian) (BD.float64 endian |> BD.map Ok)
-
-
-{-| `Codec` between a 32-bit float and an Elm `Float`.
-Due to Elm `Float`s being 64-bit, encoding and decoding it as a 32-bit float won't exactly equal the original value.
--}
-float32 : Codec Float
-float32 =
-    build (BE.float32 endian) (BD.float32 endian |> BD.map Ok)
 
 
 {-| `Codec` between a sequence of bytes and an Elm `Char`
@@ -489,7 +447,7 @@ bytes =
 {-| A partially built `Codec` for an object.
 -}
 type RecordCodec a b
-    = ObjectCodec
+    = RecordCodec
         { encoder : a -> List Encoder
         , decoder : Decoder (Result Error b)
         , fieldCount : Int
@@ -515,7 +473,7 @@ If you don't have one (for example it's a simple type with no name), you should 
 -}
 record : b -> RecordCodec a b
 record ctor =
-    ObjectCodec
+    RecordCodec
         { encoder = \_ -> []
         , decoder = BD.succeed (Ok ctor)
         , fieldCount = 0
@@ -524,9 +482,9 @@ record ctor =
 
 {-| Specify how to get a value from the object we want to encode and then give a `Codec` for that value.
 -}
-field : (a -> f) -> Codec f -> RecordCodec a (f -> b) -> RecordCodec a b
-field getter codec (ObjectCodec ocodec) =
-    ObjectCodec
+recordField : (a -> f) -> Codec f -> RecordCodec a (f -> b) -> RecordCodec a b
+recordField getter codec (RecordCodec ocodec) =
+    RecordCodec
         { encoder = \v -> (getEncoder codec <| getter v) :: ocodec.encoder v
         , decoder =
             BD.map2
@@ -550,7 +508,7 @@ field getter codec (ObjectCodec ocodec) =
 {-| Create a `Codec` from a fully specified `ObjectCodec`.
 -}
 finishRecord : RecordCodec a a -> Codec a
-finishRecord (ObjectCodec om) =
+finishRecord (RecordCodec om) =
     Codec
         { encoder = om.encoder >> List.reverse >> BE.sequence
         , decoder = om.decoder
@@ -563,8 +521,8 @@ finishRecord (ObjectCodec om) =
 
 {-| A partially built `Codec` for a custom type.
 -}
-type CustomCodec match v
-    = CustomCodec
+type CustomTypeCodec match v
+    = CustomTypeCodec
         { match : match
         , decoder : Int -> Decoder (Result Error v) -> Decoder (Result Error v)
         , idCounter : Int
@@ -601,9 +559,9 @@ You need to pass a pattern matching function, see the FAQ for details.
             |> Codec.finishCustom
 
 -}
-customType : match -> CustomCodec match value
+customType : match -> CustomTypeCodec match value
 customType match =
-    CustomCodec
+    CustomTypeCodec
         { match = match
         , decoder = \_ -> identity
         , idCounter = 0
@@ -613,9 +571,9 @@ customType match =
 variant :
     ((List Encoder -> Encoder) -> a)
     -> (Int -> Decoder (Result Error v))
-    -> CustomCodec (a -> b) v
-    -> CustomCodec b v
-variant matchPiece decoderPiece (CustomCodec am) =
+    -> CustomTypeCodec (a -> b) v
+    -> CustomTypeCodec b v
+variant matchPiece decoderPiece (CustomTypeCodec am) =
     let
         enc v =
             BE.unsignedInt16 endian am.idCounter
@@ -629,7 +587,7 @@ variant matchPiece decoderPiece (CustomCodec am) =
             else
                 am.decoder tag orElse
     in
-    CustomCodec
+    CustomTypeCodec
         { match = am.match <| matchPiece enc
         , decoder = decoder_
         , idCounter = am.idCounter + 1
@@ -638,7 +596,7 @@ variant matchPiece decoderPiece (CustomCodec am) =
 
 {-| Define a variant with 0 parameters for a custom type.
 -}
-variant0 : v -> CustomCodec (Encoder -> a) v -> CustomCodec a v
+variant0 : v -> CustomTypeCodec (Encoder -> a) v -> CustomTypeCodec a v
 variant0 ctor =
     variant
         (\c -> c [])
@@ -654,8 +612,8 @@ variantError customIndex variantIndex error =
 variant1 :
     (a -> v)
     -> Codec a
-    -> CustomCodec ((a -> Encoder) -> b) v
-    -> CustomCodec b v
+    -> CustomTypeCodec ((a -> Encoder) -> b) v
+    -> CustomTypeCodec b v
 variant1 ctor m1 =
     variant
         (\c v ->
@@ -683,8 +641,8 @@ variant2 :
     (a -> b -> v)
     -> Codec a
     -> Codec b
-    -> CustomCodec ((a -> b -> Encoder) -> c) v
-    -> CustomCodec c v
+    -> CustomTypeCodec ((a -> b -> Encoder) -> c) v
+    -> CustomTypeCodec c v
 variant2 ctor m1 m2 =
     variant
         (\c v1 v2 ->
@@ -718,8 +676,8 @@ variant3 :
     -> Codec a
     -> Codec b
     -> Codec c
-    -> CustomCodec ((a -> b -> c -> Encoder) -> partial) v
-    -> CustomCodec partial v
+    -> CustomTypeCodec ((a -> b -> c -> Encoder) -> partial) v
+    -> CustomTypeCodec partial v
 variant3 ctor m1 m2 m3 =
     variant
         (\c v1 v2 v3 ->
@@ -759,8 +717,8 @@ variant4 :
     -> Codec b
     -> Codec c
     -> Codec d
-    -> CustomCodec ((a -> b -> c -> d -> Encoder) -> partial) v
-    -> CustomCodec partial v
+    -> CustomTypeCodec ((a -> b -> c -> d -> Encoder) -> partial) v
+    -> CustomTypeCodec partial v
 variant4 ctor m1 m2 m3 m4 =
     variant
         (\c v1 v2 v3 v4 ->
@@ -806,8 +764,8 @@ variant5 :
     -> Codec c
     -> Codec d
     -> Codec e
-    -> CustomCodec ((a -> b -> c -> d -> e -> Encoder) -> partial) v
-    -> CustomCodec partial v
+    -> CustomTypeCodec ((a -> b -> c -> d -> e -> Encoder) -> partial) v
+    -> CustomTypeCodec partial v
 variant5 ctor m1 m2 m3 m4 m5 =
     variant
         (\c v1 v2 v3 v4 v5 ->
@@ -859,8 +817,8 @@ variant6 :
     -> Codec d
     -> Codec e
     -> Codec f
-    -> CustomCodec ((a -> b -> c -> d -> e -> f -> Encoder) -> partial) v
-    -> CustomCodec partial v
+    -> CustomTypeCodec ((a -> b -> c -> d -> e -> f -> Encoder) -> partial) v
+    -> CustomTypeCodec partial v
 variant6 ctor m1 m2 m3 m4 m5 m6 =
     variant
         (\c v1 v2 v3 v4 v5 v6 ->
@@ -920,8 +878,8 @@ variant7 :
     -> Codec e
     -> Codec f
     -> Codec g
-    -> CustomCodec ((a -> b -> c -> d -> e -> f -> g -> Encoder) -> partial) v
-    -> CustomCodec partial v
+    -> CustomTypeCodec ((a -> b -> c -> d -> e -> f -> g -> Encoder) -> partial) v
+    -> CustomTypeCodec partial v
 variant7 ctor m1 m2 m3 m4 m5 m6 m7 =
     variant
         (\c v1 v2 v3 v4 v5 v6 v7 ->
@@ -989,8 +947,8 @@ variant8 :
     -> Codec f
     -> Codec g
     -> Codec h
-    -> CustomCodec ((a -> b -> c -> d -> e -> f -> g -> h -> Encoder) -> partial) v
-    -> CustomCodec partial v
+    -> CustomTypeCodec ((a -> b -> c -> d -> e -> f -> g -> h -> Encoder) -> partial) v
+    -> CustomTypeCodec partial v
 variant8 ctor m1 m2 m3 m4 m5 m6 m7 m8 =
     variant
         (\c v1 v2 v3 v4 v5 v6 v7 v8 ->
@@ -1055,8 +1013,8 @@ variant8 ctor m1 m2 m3 m4 m5 m6 m7 m8 =
 
 {-| Build a `Codec` for a fully specified custom type.
 -}
-finishCustomType : CustomCodec (a -> Encoder) a -> Codec a
-finishCustomType (CustomCodec am) =
+finishCustomType : CustomTypeCodec (a -> Encoder) a -> Codec a
+finishCustomType (CustomTypeCodec am) =
     Codec
         { encoder = \v -> am.match v
         , decoder =
