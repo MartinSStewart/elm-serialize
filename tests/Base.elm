@@ -28,7 +28,7 @@ suite =
             [ test "roundtrips"
                 (\_ ->
                     Codec.constant 632
-                        |> (\d -> Codec.decode d (Bytes.Encode.sequence [] |> Bytes.Encode.encode))
+                        |> (\d -> Codec.fromBytes d (Bytes.Encode.sequence [] |> Bytes.Encode.encode))
                         |> Expect.equal (Ok 632)
                 )
             ]
@@ -42,8 +42,8 @@ roundtrips fuzzer codec =
     fuzz fuzzer "is a roundtrip" <|
         \value ->
             value
-                |> Codec.encode codec
-                |> Codec.decode codec
+                |> Codec.toBytes codec
+                |> Codec.fromBytes codec
                 |> Expect.equal (Ok value)
 
 
@@ -253,8 +253,8 @@ andThenTests =
     , test "andThen fails on invalid binary data." <|
         \_ ->
             5
-                |> Codec.encode volumeCodec
-                |> Codec.decode volumeCodec
+                |> Codec.toBytes volumeCodec
+                |> Codec.fromBytes volumeCodec
                 |> Expect.equal (Codec.AndThenCodecError "Volume is outside of valid range." |> Err)
     ]
 
@@ -301,15 +301,15 @@ errorTests =
                         |> Codec.variant1 Just Codec.int
                         |> Codec.finishCustomType
             in
-            Codec.encode codecBad (Just 0) |> Codec.decode codec |> Expect.equal (Err Codec.NoVariantMatches)
+            Codec.toBytes codecBad (Just 0) |> Codec.fromBytes codec |> Expect.equal (Err Codec.NoVariantMatches)
     , test "list produces correct error message." <|
         \_ ->
             let
                 codec =
                     Codec.list volumeCodec
             in
-            Codec.encode codec [ 0, 3, 0, 4, 0, 0 ]
-                |> Codec.decode codec
+            Codec.toBytes codec [ 0, 3, 0, 4, 0, 0 ]
+                |> Codec.fromBytes codec
                 |> Expect.equal
                     (Codec.ListCodecError
                         { listIndex = 1
@@ -328,8 +328,8 @@ errorTests =
                         |> Codec.field .d Codec.string
                         |> Codec.finishRecord
             in
-            Codec.encode codec { a = 0, b = -1, c = "", d = "" }
-                |> Codec.decode codec
+            Codec.toBytes codec { a = 0, b = -1, c = "", d = "" }
+                |> Codec.fromBytes codec
                 |> Expect.equal
                     (Codec.RecordCodecError
                         { fieldIndex = 1
@@ -431,8 +431,8 @@ enumTest =
     [ roundtrips daysOfWeekFuzz daysOfWeekCodec
     , test "Default to first item when encoding if item doesn't exist." <|
         \_ ->
-            Codec.encode badDaysOfWeekCodec Tuesday |> Codec.decode badDaysOfWeekCodec |> Expect.equal (Ok Monday)
+            Codec.toBytes badDaysOfWeekCodec Tuesday |> Codec.fromBytes badDaysOfWeekCodec |> Expect.equal (Ok Monday)
     , test "Error if enum index is greater than number of values in enum." <|
         \_ ->
-            Codec.encode daysOfWeekCodec Tuesday |> Codec.decode badDaysOfWeekCodec |> Expect.equal (Err Codec.EnumCodecValueNotFound)
+            Codec.toBytes daysOfWeekCodec Tuesday |> Codec.fromBytes badDaysOfWeekCodec |> Expect.equal (Err Codec.EnumCodecValueNotFound)
     ]
