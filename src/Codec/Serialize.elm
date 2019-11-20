@@ -4,7 +4,7 @@ module Codec.Serialize exposing
     , Encoder, getEncoder, encodeBytes
     , string, bool, char, float, int, bytes
     , maybe, list, array, dict, set, tuple, triple, result, enum
-    , RecordCodec, record, recordField, finishRecord
+    , RecordCodec, record, field, finishRecord
     , CustomTypeCodec, customType, variant0, variant1, variant2, variant3, variant4, variant5, variant6, variant7, variant8, finishCustomType
     , map, andThen
     , constant, lazy
@@ -40,7 +40,7 @@ module Codec.Serialize exposing
 
 # Records
 
-@docs RecordCodec, record, recordField, finishRecord
+@docs RecordCodec, record, field, finishRecord
 
 
 # Custom Types
@@ -706,8 +706,8 @@ record ctor =
 
 {-| Specify how to get a value from the object we want to encode and then give a `Codec` for that value.
 -}
-recordField : (a -> f) -> Codec f -> RecordCodec a (f -> b) -> RecordCodec a b
-recordField getter codec (RecordCodec ocodec) =
+field : (a -> f) -> Codec f -> RecordCodec a (f -> b) -> RecordCodec a b
+field getter codec (RecordCodec ocodec) =
     RecordCodec
         { encoder = \v -> (getEncoder codec <| getter v) :: ocodec.encoder v
         , decoder =

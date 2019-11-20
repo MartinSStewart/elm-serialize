@@ -125,7 +125,7 @@ objectTests =
     , describe "with 1 field"
         [ roundtrips (Fuzz.map (\i -> { fname = i }) maxRangeIntFuzz)
             (Codec.record (\i -> { fname = i })
-                |> Codec.recordField .fname Codec.int
+                |> Codec.field .fname Codec.int
                 |> Codec.finishRecord
             )
         ]
@@ -146,8 +146,8 @@ objectTests =
                     , b = b
                     }
                 )
-                |> Codec.recordField .a Codec.int
-                |> Codec.recordField .b Codec.int
+                |> Codec.field .a Codec.int
+                |> Codec.field .b Codec.int
                 |> Codec.finishRecord
             )
         ]
@@ -322,10 +322,10 @@ errorTests =
             let
                 codec =
                     Codec.record Record
-                        |> Codec.recordField .a Codec.int
-                        |> Codec.recordField .b volumeCodec
-                        |> Codec.recordField .c Codec.string
-                        |> Codec.recordField .d Codec.string
+                        |> Codec.field .a Codec.int
+                        |> Codec.field .b volumeCodec
+                        |> Codec.field .c Codec.string
+                        |> Codec.field .d Codec.string
                         |> Codec.finishRecord
             in
             Codec.encode codec { a = 0, b = -1, c = "", d = "" }
