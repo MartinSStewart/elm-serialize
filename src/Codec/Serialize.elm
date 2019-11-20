@@ -1,7 +1,7 @@
-module Codec.Bytes exposing
+module Codec.Serialize exposing
     ( Codec, Error(..)
-    , Decoder, getDecoder, decode, errorToString
-    , Encoder, getEncoder, encode
+    , Decoder, getDecoder, decodeBytes, errorToString
+    , Encoder, getEncoder, encodeBytes
     , string, bool, char, float, int, bytes
     , maybe, list, array, dict, set, tuple, triple, result, enum
     , RecordCodec, record, recordField, finishRecord
@@ -20,12 +20,12 @@ module Codec.Bytes exposing
 
 # Decode
 
-@docs Decoder, getDecoder, decode, errorToString
+@docs Decoder, getDecoder, decodeBytes, errorToString
 
 
 # Encode
 
-@docs Encoder, getEncoder, encode
+@docs Encoder, getEncoder, encodeBytes
 
 
 # Primitives
@@ -64,7 +64,6 @@ import Bytes
 import Bytes.Decode as BD
 import Bytes.Encode as BE
 import Dict exposing (Dict)
-import List.Nonempty
 import Ordinal
 import Set exposing (Set)
 import Toop exposing (T4(..), T5(..), T6(..), T7(..), T8(..))
@@ -227,8 +226,8 @@ getDecoder (Codec m) =
 
 {-| Run a `Codec` to turn a sequence of bytes into an Elm value.
 -}
-decode : Codec a -> Bytes.Bytes -> Result Error a
-decode codec bytes_ =
+decodeBytes : Codec a -> Bytes.Bytes -> Result Error a
+decodeBytes codec bytes_ =
     case BD.decode (getDecoder codec) bytes_ of
         Just value ->
             value
@@ -250,8 +249,8 @@ getEncoder (Codec m) =
 
 {-| Convert an Elm value into a sequence of bytes.
 -}
-encode : Codec a -> a -> Bytes.Bytes
-encode codec value =
+encodeBytes : Codec a -> a -> Bytes.Bytes
+encodeBytes codec value =
     getEncoder codec value |> BE.encode
 
 

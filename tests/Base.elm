@@ -3,7 +3,7 @@ module Base exposing (roundtrips, suite)
 import Basics.Extra
 import Bytes exposing (Bytes)
 import Bytes.Encode
-import Codec.Bytes as Codec exposing (Codec)
+import Codec.Serialize as Codec exposing (Codec)
 import Dict
 import Expect exposing (Expectation)
 import Fuzz exposing (Fuzzer)
