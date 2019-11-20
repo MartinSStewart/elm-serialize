@@ -1,7 +1,7 @@
 module Codec.Serialize exposing
     ( Codec, Error(..)
-    , Decoder, getDecoder, decodeBytes, errorToString
-    , Encoder, getEncoder, encodeBytes
+    , Decoder, getDecoder, fromBytes, fromString, errorToString
+    , Encoder, getEncoder, toBytes, toString
     , string, bool, char, float, int, bytes
     , maybe, list, array, dict, set, tuple, triple, result, enum
     , RecordCodec, record, field, finishRecord
@@ -20,12 +20,12 @@ module Codec.Serialize exposing
 
 # Decode
 
-@docs Decoder, getDecoder, decodeBytes, errorToString
+@docs Decoder, getDecoder, fromBytes, fromString, errorToString
 
 
 # Encode
 
-@docs Encoder, getEncoder, encodeBytes
+@docs Encoder, getEncoder, toBytes, toString
 
 
 # Primitives
@@ -60,6 +60,7 @@ module Codec.Serialize exposing
 -}
 
 import Array exposing (Array)
+import Base64
 import Bytes
 import Bytes.Decode as BD
 import Bytes.Encode as BE
@@ -226,14 +227,24 @@ getDecoder (Codec m) =
 
 {-| Run a `Codec` to turn a sequence of bytes into an Elm value.
 -}
-decodeBytes : Codec a -> Bytes.Bytes -> Result Error a
-decodeBytes codec bytes_ =
+fromBytes : Codec a -> Bytes.Bytes -> Result Error a
+fromBytes codec bytes_ =
     case BD.decode (getDecoder codec) bytes_ of
         Just value ->
             value
 
         Nothing ->
-            DataCorrupted |> Err
+            Err DataCorrupted
+
+
+fromString : Codec a -> String -> Result Error a
+fromString codec base64 =
+    case Base64.toBytes base64 of
+        Just bytes_ ->
+            fromBytes codec bytes_
+
+        Nothing ->
+            Err DataCorrupted
 
 
 
@@ -249,9 +260,14 @@ getEncoder (Codec m) =
 
 {-| Convert an Elm value into a sequence of bytes.
 -}
-encodeBytes : Codec a -> a -> Bytes.Bytes
-encodeBytes codec value =
+toBytes : Codec a -> a -> Bytes.Bytes
+toBytes codec value =
     getEncoder codec value |> BE.encode
+
+
+toString : Codec a -> a -> String
+toString codec =
+    toBytes codec >> Base64.fromBytes >> Maybe.withDefault ""
 
 
 
@@ -1257,25 +1273,25 @@ finishCustomType (CustomTypeCodec am) =
 {-| Transform a `Codec`.
 -}
 map : (a -> b) -> (b -> a) -> Codec a -> Codec b
-map fromBytes toBytes codec =
+map fromBytes_ toBytes_ codec =
     map_
         (\value ->
             case value of
                 Ok ok ->
-                    fromBytes ok |> Ok
+                    fromBytes_ ok |> Ok
 
                 Err err ->
                     Err err
         )
-        toBytes
+        toBytes_
         codec
 
 
 map_ : (Result Error a -> Result Error b) -> (b -> a) -> Codec a -> Codec b
-map_ fromBytes toBytes codec =
+map_ fromBytes_ toBytes_ codec =
     Codec
-        { decoder = getDecoder codec |> BD.map fromBytes
-        , encoder = \v -> toBytes v |> getEncoder codec
+        { decoder = getDecoder codec |> BD.map fromBytes_
+        , encoder = \v -> toBytes_ v |> getEncoder codec
         }
 
 
@@ -1297,7 +1313,7 @@ map_ fromBytes toBytes codec =
 
 -}
 andThen : (a -> Result String b) -> (b -> a) -> Codec a -> Codec b
-andThen fromBytes toBytes codec =
+andThen fromBytes_ toBytes_ codec =
     Codec
         { decoder =
             getDecoder codec
@@ -1305,12 +1321,12 @@ andThen fromBytes toBytes codec =
                     (\value ->
                         case value of
                             Ok ok ->
-                                fromBytes ok |> Result.mapError AndThenCodecError
+                                fromBytes_ ok |> Result.mapError AndThenCodecError
 
                             Err err ->
                                 Err err
                     )
-        , encoder = \v -> toBytes v |> getEncoder codec
+        , encoder = \v -> toBytes_ v |> getEncoder codec
         }
 
 
