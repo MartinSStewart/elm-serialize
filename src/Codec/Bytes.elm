@@ -8,7 +8,7 @@ module Codec.Bytes exposing
     , CustomTypeCodec, customType, variant0, variant1, variant2, variant3, variant4, variant5, variant6, variant7, variant8, finishCustomType
     , map, andThen
     , constant, lazy
-    , errorToString, finishRecord
+    , enum, errorToString, finishRecord
     )
 
 {-| A `Codec a` contains a `Bytes.Decoder a` and the corresponding `a -> Bytes.Encoder`.
@@ -65,6 +65,7 @@ import Bytes
 import Bytes.Decode as BD
 import Bytes.Encode as BE
 import Dict exposing (Dict)
+import List.Nonempty
 import Ordinal
 import Set exposing (Set)
 import Toop exposing (T4(..), T5(..), T6(..), T7(..), T8(..))
@@ -84,12 +85,23 @@ type Codec a
 
 
 type Error
-    = BaseError String
-    | CustomTypeError { variantIndex : Int, variantSize : Int, variantConstructorIndex : Int, error : Error }
+    = AndThenCodecError String
+    | EnumCodecNegativeIndex
+    | EnumCodecValueNotFound
+    | CharCodecError
+    | BoolCodecError
+    | DictCodecError
+    | SetCodecError
+    | MaybeCodecError
+    | ResultCodecError
+    | DataCorrupted
+    | CustomTypeCodecError { variantIndex : Int, variantSize : Int, variantConstructorIndex : Int, error : Error }
     | NoVariantMatches
-    | RecordError { fieldIndex : Int, error : Error }
-    | ListError { listIndex : Int, error : Error }
-    | TupleError { tupleIndex : Int, error : Error }
+    | RecordCodecError { fieldIndex : Int, error : Error }
+    | ListCodecError { listIndex : Int, error : Error }
+    | ArrayCodecError { arrayIndex : Int, error : Error }
+    | TupleCodecError { tupleIndex : Int, error : Error }
+    | TripleCodecError { tripleIndex : Int, error : Error }
 
 
 errorToString : Error -> String
@@ -107,10 +119,13 @@ errorToString errorData =
 errorToString_ : Error -> String -> String
 errorToString_ errorData previousText =
     case errorData of
-        BaseError text ->
-            previousText ++ "The codec returned this error message:\n    " ++ text
+        AndThenCodecError text ->
+            previousText ++ "The Codec.andThen returned this error message:\n    " ++ text
 
-        CustomTypeError { variantIndex, variantSize, variantConstructorIndex, error } ->
+        DataCorrupted ->
+            previousText ++ "Data corrupted. This probably means you tried reading in data that wasn't compatible with this codec."
+
+        CustomTypeCodecError { variantIndex, variantSize, variantConstructorIndex, error } ->
             let
                 variantText =
                     "|> variant"
@@ -131,26 +146,56 @@ errorToString_ errorData previousText =
         NoVariantMatches ->
             previousText ++ " in a custom type codec. There wasn't any variants with the correct id. This might mean you've removed a variant and tried to decode data that needed that variant."
 
-        RecordError { fieldIndex, error } ->
+        RecordCodecError { fieldIndex, error } ->
             previousText
                 ++ " in a record codec, in the "
                 ++ Ordinal.ordinal (fieldIndex + 1)
                 ++ " field\n\n"
                 |> errorToString_ error
 
-        ListError { listIndex, error } ->
+        ListCodecError { listIndex, error } ->
             previousText
                 ++ " in a list codec, in the "
                 ++ Ordinal.ordinal (listIndex + 1)
                 ++ " element\n\n"
                 |> errorToString_ error
 
-        TupleError { tupleIndex, error } ->
+        TupleCodecError { tupleIndex, error } ->
             previousText
                 ++ " in a tuple codec, in the "
                 ++ Ordinal.ordinal (tupleIndex + 1)
                 ++ " element\n\n"
                 |> errorToString_ error
+
+        EnumCodecNegativeIndex ->
+            previousText ++ "EnumNegativeIndex"
+
+        EnumCodecValueNotFound ->
+            previousText ++ "EnumValueNotFound"
+
+        CharCodecError ->
+            previousText ++ "CharError"
+
+        BoolCodecError ->
+            previousText ++ "BoolError"
+
+        DictCodecError ->
+            previousText
+
+        SetCodecError ->
+            previousText
+
+        ArrayCodecError { arrayIndex, error } ->
+            previousText
+
+        TripleCodecError { tripleIndex, error } ->
+            previousText
+
+        MaybeCodecError ->
+            previousText
+
+        ResultCodecError ->
+            previousText
 
 
 {-| Describes how to generate a sequence of bytes.
@@ -190,7 +235,7 @@ decode codec bytes_ =
             value
 
         Nothing ->
-            BaseError "Unknown error" |> Err
+            DataCorrupted |> Err
 
 
 
@@ -256,20 +301,17 @@ bool =
                 BE.unsignedInt8 0
         )
         (BD.unsignedInt8
-            |> BD.andThen
+            |> BD.map
                 (\value ->
                     case value of
                         0 ->
-                            BD.succeed (Ok False)
+                            Ok False
 
                         1 ->
-                            BD.succeed (Ok True)
+                            Ok True
 
                         _ ->
-                            ("Tried parsing a bool but the value " ++ String.fromInt value ++ " must equal 0 or 1.")
-                                |> BaseError
-                                |> Err
-                                |> BD.succeed
+                            Err BoolCodecError
                 )
         )
 
@@ -310,7 +352,7 @@ char =
                             Ok char_
 
                         Nothing ->
-                            "Tried to parse a char but failed" |> BaseError |> Err
+                            Err CharCodecError
                 )
         )
 
@@ -335,6 +377,16 @@ maybe codec =
         |> variant0 Nothing
         |> variant1 Just codec
         |> finishCustomType
+        |> map_
+            (\value ->
+                case value of
+                    Ok ok ->
+                        Ok ok
+
+                    Err _ ->
+                        Err MaybeCodecError
+            )
+            identity
 
 
 {-| `Codec` between a sequence of bytes and an Elm `List`.
@@ -371,7 +423,7 @@ listStep length decoder_ ( n, xs ) =
                         BD.Loop ( n - 1, ok :: xs )
 
                     Err err ->
-                        BD.Done (ListError { listIndex = length - n, error = err } |> Err)
+                        BD.Done (ListCodecError { listIndex = length - n, error = err } |> Err)
             )
             decoder_
 
@@ -380,21 +432,55 @@ listStep length decoder_ ( n, xs ) =
 -}
 array : Codec a -> Codec (Array a)
 array codec =
-    list codec |> map Array.fromList Array.toList
+    list codec
+        |> map_
+            (\value ->
+                case value of
+                    Ok ok ->
+                        Array.fromList ok |> Ok
+
+                    Err (ListCodecError { listIndex, error }) ->
+                        ArrayCodecError { arrayIndex = listIndex, error = error } |> Err
+
+                    Err _ ->
+                        -- This should never happen.
+                        Err DataCorrupted
+            )
+            Array.toList
 
 
 {-| `Codec` between a sequence of bytes and an Elm `Dict`.
 -}
 dict : Codec comparable -> Codec a -> Codec (Dict comparable a)
 dict keyCodec valueCodec =
-    list (tuple keyCodec valueCodec) |> map Dict.fromList Dict.toList
+    list (tuple keyCodec valueCodec)
+        |> map_
+            (\value ->
+                case value of
+                    Ok ok ->
+                        Dict.fromList ok |> Ok
+
+                    Err _ ->
+                        Err SetCodecError
+            )
+            Dict.toList
 
 
 {-| `Codec` between a sequence of bytes and an Elm `Set`.
 -}
 set : Codec comparable -> Codec (Set comparable)
 set codec =
-    list codec |> map Set.fromList Set.toList
+    list codec
+        |> map_
+            (\value ->
+                case value of
+                    Ok ok ->
+                        Set.fromList ok |> Ok
+
+                    Err _ ->
+                        Err SetCodecError
+            )
+            Set.toList
 
 
 {-| `Codec` between a sequence of bytes and an Elm `Tuple`.
@@ -415,11 +501,11 @@ tuple m1 m2 =
                         ( Ok aOk, Ok bOk ) ->
                             Ok ( aOk, bOk )
 
-                        ( Err aError, _ ) ->
-                            TupleError { tupleIndex = 0, error = aError } |> Err
+                        ( Err error, _ ) ->
+                            TupleCodecError { tupleIndex = 0, error = error } |> Err
 
-                        ( _, Err bError ) ->
-                            TupleError { tupleIndex = 1, error = bError } |> Err
+                        ( _, Err error ) ->
+                            TupleCodecError { tupleIndex = 1, error = error } |> Err
                 )
                 (getDecoder m1)
                 (getDecoder m2)
@@ -445,14 +531,14 @@ triple m1 m2 m3 =
                         ( Ok aOk, Ok bOk, Ok cOk ) ->
                             Ok ( aOk, bOk, cOk )
 
-                        ( Err aError, _, _ ) ->
-                            TupleError { tupleIndex = 0, error = aError } |> Err
+                        ( Err error, _, _ ) ->
+                            TripleCodecError { tripleIndex = 0, error = error } |> Err
 
-                        ( _, Err bError, _ ) ->
-                            TupleError { tupleIndex = 1, error = bError } |> Err
+                        ( _, Err error, _ ) ->
+                            TripleCodecError { tripleIndex = 1, error = error } |> Err
 
-                        ( _, _, Err cError ) ->
-                            TupleError { tupleIndex = 2, error = cError } |> Err
+                        ( _, _, Err error ) ->
+                            TripleCodecError { tripleIndex = 2, error = error } |> Err
                 )
                 (getDecoder m1)
                 (getDecoder m2)
@@ -476,6 +562,16 @@ result errorCodec valueCodec =
         |> variant1 Err errorCodec
         |> variant1 Ok valueCodec
         |> finishCustomType
+        |> map_
+            (\value ->
+                case value of
+                    Ok ok ->
+                        Ok ok
+
+                    Err _ ->
+                        Err ResultCodecError
+            )
+            identity
 
 
 {-| `Codec` for `Bytes`. This is useful if you wanted to include binary data that you're going to decode elsewhere.
@@ -495,6 +591,79 @@ bytes =
                     ]
         , decoder = BD.unsignedInt32 endian |> BD.andThen (\length -> BD.bytes length |> BD.map Ok)
         }
+
+
+{-| A codec for an item from a list of possible items.
+If you try to encode an item that isn't in the list then the first item is defaulted to.
+
+    type DaysOfWeek
+        = Monday
+        | Tuesday
+        | Wednesday
+        | Thursday
+        | Friday
+        | Saturday
+        | Sunday
+
+    daysOfWeekCodec =
+        Codec.enum Monday [ Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday ]
+
+-}
+enum : a -> List a -> Codec a
+enum defaultItem items =
+    build
+        (\value ->
+            items
+                |> findIndex ((==) value)
+                |> Maybe.withDefault -1
+                |> (+) 1
+                |> BE.unsignedInt32 endian
+        )
+        (BD.unsignedInt32 endian
+            |> BD.map
+                (\index ->
+                    if index < 0 then
+                        Err EnumCodecNegativeIndex
+
+                    else if index > List.length items then
+                        Err EnumCodecValueNotFound
+
+                    else
+                        getAt (index - 1) items |> Maybe.withDefault defaultItem |> Ok
+                )
+        )
+
+
+getAt : Int -> List a -> Maybe a
+getAt idx xs =
+    if idx < 0 then
+        Nothing
+
+    else
+        List.head <| List.drop idx xs
+
+
+{-| <https://github.com/elm-community/list-extra/blob/f9faf1cfa1cec24f977313b1b63e2a1064c36eed/src/List/Extra.elm#L620>
+-}
+findIndex : (a -> Bool) -> List a -> Maybe Int
+findIndex =
+    findIndexHelp 0
+
+
+{-| <https://github.com/elm-community/list-extra/blob/f9faf1cfa1cec24f977313b1b63e2a1064c36eed/src/List/Extra.elm#L625>
+-}
+findIndexHelp : Int -> (a -> Bool) -> List a -> Maybe Int
+findIndexHelp index predicate list_ =
+    case list_ of
+        [] ->
+            Nothing
+
+        x :: xs ->
+            if predicate x then
+                Just index
+
+            else
+                findIndexHelp (index + 1) predicate xs
 
 
 
@@ -554,7 +723,7 @@ recordField getter codec (RecordCodec ocodec) =
                             Err fError
 
                         ( _, Err xError ) ->
-                            RecordError { fieldIndex = ocodec.fieldCount, error = xError } |> Err
+                            RecordCodecError { fieldIndex = ocodec.fieldCount, error = xError } |> Err
                 )
                 ocodec.decoder
                 (getDecoder codec)
@@ -661,7 +830,7 @@ variant0 ctor =
 
 
 variantError customIndex variantSize variantIndex error =
-    CustomTypeError { variantIndex = customIndex, variantSize = variantSize, variantConstructorIndex = variantIndex, error = error } |> Err
+    CustomTypeCodecError { variantIndex = customIndex, variantSize = variantSize, variantConstructorIndex = variantIndex, error = error } |> Err
 
 
 {-| Define a variant with 1 parameters for a custom type.
@@ -1091,18 +1260,23 @@ finishCustomType (CustomTypeCodec am) =
 -}
 map : (a -> b) -> (b -> a) -> Codec a -> Codec b
 map fromBytes toBytes codec =
-    Codec
-        { decoder =
-            getDecoder codec
-                |> BD.map
-                    (\value ->
-                        case value of
-                            Ok ok ->
-                                fromBytes ok |> Ok
+    map_
+        (\value ->
+            case value of
+                Ok ok ->
+                    fromBytes ok |> Ok
 
-                            Err err ->
-                                Err err
-                    )
+                Err err ->
+                    Err err
+        )
+        toBytes
+        codec
+
+
+map_ : (Result Error a -> Result Error b) -> (b -> a) -> Codec a -> Codec b
+map_ fromBytes toBytes codec =
+    Codec
+        { decoder = getDecoder codec |> BD.map fromBytes
         , encoder = \v -> toBytes v |> getEncoder codec
         }
 
@@ -1133,7 +1307,7 @@ andThen fromBytes toBytes codec =
                     (\value ->
                         case value of
                             Ok ok ->
-                                fromBytes ok |> Result.mapError BaseError
+                                fromBytes ok |> Result.mapError AndThenCodecError
 
                             Err err ->
                                 Err err

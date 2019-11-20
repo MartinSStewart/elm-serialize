@@ -19,7 +19,7 @@ suite =
         , describe "Containers" containersTests
         , describe "Object" objectTests
         , describe "Custom" customTests
-        , describe "bimap" bimapTests
+        , describe "map" bimapTests
         , describe "andThen" andThenTests
         , describe "errorTests" errorTests
         , describe "lazy" lazyTests
@@ -33,6 +33,7 @@ suite =
                 )
             ]
         , describe "errorToString" errorToStringTest
+        , describe "enum" enumTest
         ]
 
 
@@ -254,7 +255,7 @@ andThenTests =
             5
                 |> Codec.encode volumeCodec
                 |> Codec.decode volumeCodec
-                |> Expect.equal (Codec.BaseError "Volume is outside of valid range." |> Err)
+                |> Expect.equal (Codec.AndThenCodecError "Volume is outside of valid range." |> Err)
     ]
 
 
@@ -310,9 +311,9 @@ errorTests =
             Codec.encode codec [ 0, 3, 0, 4, 0, 0 ]
                 |> Codec.decode codec
                 |> Expect.equal
-                    (Codec.ListError
+                    (Codec.ListCodecError
                         { listIndex = 1
-                        , error = Codec.BaseError "Volume is outside of valid range."
+                        , error = Codec.AndThenCodecError "Volume is outside of valid range."
                         }
                         |> Err
                     )
@@ -330,9 +331,9 @@ errorTests =
             Codec.encode codec { a = 0, b = -1, c = "", d = "" }
                 |> Codec.decode codec
                 |> Expect.equal
-                    (Codec.RecordError
+                    (Codec.RecordCodecError
                         { fieldIndex = 1
-                        , error = Codec.BaseError "Volume is outside of valid range."
+                        , error = Codec.AndThenCodecError "Volume is outside of valid range."
                         }
                         |> Err
                     )
@@ -394,8 +395,44 @@ errorToStringTest =
                     "An error occured in a custom type codec, in the 1st variant called. The line looks something like this (x marks the position of the parameter that failed to decode):\n"
                         ++ "|> variant2 _ _ x\n\nwith this error message:\n    Something broke.\n\n\n"
             in
-            { variantIndex = 0, variantSize = 2, variantConstructorIndex = 1, error = Codec.BaseError "Something broke." }
-                |> Codec.CustomTypeError
+            { variantIndex = 0, variantSize = 2, variantConstructorIndex = 1, error = Codec.AndThenCodecError "Something broke." }
+                |> Codec.CustomTypeCodecError
                 |> Codec.errorToString
                 |> Expect.equal expected
+    ]
+
+
+type DaysOfWeek
+    = Monday
+    | Tuesday
+    | Wednesday
+    | Thursday
+    | Friday
+    | Saturday
+    | Sunday
+
+
+daysOfWeekCodec =
+    Codec.enum Monday [ Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday ]
+
+
+badDaysOfWeekCodec =
+    Codec.enum Monday []
+
+
+daysOfWeekFuzz =
+    [ Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday ]
+        |> List.map Fuzz.constant
+        |> Fuzz.oneOf
+
+
+enumTest : List Test
+enumTest =
+    [ roundtrips daysOfWeekFuzz daysOfWeekCodec
+    , test "Default to first item when encoding if item doesn't exist." <|
+        \_ ->
+            Codec.encode badDaysOfWeekCodec Tuesday |> Codec.decode badDaysOfWeekCodec |> Expect.equal (Ok Monday)
+    , test "Error if enum index is greater than number of values in enum." <|
+        \_ ->
+            Codec.encode daysOfWeekCodec Tuesday |> Codec.decode badDaysOfWeekCodec |> Expect.equal (Err Codec.EnumCodecValueNotFound)
     ]

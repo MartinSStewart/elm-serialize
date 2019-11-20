@@ -12,7 +12,8 @@
         "bburdette/toop": "1.0.1 <= v < 2.0.0",
         "elm/bytes": "1.0.8 <= v < 2.0.0",
         "elm/core": "1.0.2 <= v < 2.0.0",
-        "lynn/elm-ordinal": "1.0.4 <= v < 2.0.0"
+        "lynn/elm-ordinal": "1.0.4 <= v < 2.0.0",
+        "mgold/elm-nonempty-list": "4.0.2 <= v < 5.0.0"
     },
     "test-dependencies": {
         "elm/random": "1.0.0 <= v < 2.0.0",
