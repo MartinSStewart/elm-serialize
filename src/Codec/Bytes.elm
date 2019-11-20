@@ -1,14 +1,13 @@
 module Codec.Bytes exposing
-    ( Codec, Encoder, Error(..)
-    , Decoder, getDecoder, decode
-    , getEncoder, encode
+    ( Codec, Error(..)
+    , Decoder, getDecoder, decode, errorToString
+    , Encoder, getEncoder, encode
     , string, bool, char, float, int, bytes
-    , maybe, list, array, dict, set, tuple, triple, result
-    , RecordCodec, record, recordField
+    , maybe, list, array, dict, set, tuple, triple, result, enum
+    , RecordCodec, record, recordField, finishRecord
     , CustomTypeCodec, customType, variant0, variant1, variant2, variant3, variant4, variant5, variant6, variant7, variant8, finishCustomType
     , map, andThen
     , constant, lazy
-    , enum, errorToString, finishRecord
     )
 
 {-| A `Codec a` contains a `Bytes.Decoder a` and the corresponding `a -> Bytes.Encoder`.
@@ -16,17 +15,17 @@ module Codec.Bytes exposing
 
 # Definition
 
-@docs Codec, Encoder, Bytes, Error
+@docs Codec, Error
 
 
 # Decode
 
-@docs Decoder, getDecoder, decode
+@docs Decoder, getDecoder, decode, errorToString
 
 
 # Encode
 
-@docs getEncoder, encode
+@docs Encoder, getEncoder, encode
 
 
 # Primitives
@@ -36,12 +35,12 @@ module Codec.Bytes exposing
 
 # Data Structures
 
-@docs maybe, list, array, dict, set, tuple, triple, result
+@docs maybe, list, array, dict, set, tuple, triple, result, enum
 
 
-# Object Primitives
+# Records
 
-@docs RecordCodec, record, recordField, finishObject
+@docs RecordCodec, record, recordField, finishRecord
 
 
 # Custom Types
