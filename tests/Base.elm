@@ -68,6 +68,9 @@ basicTests =
     , describe "Codec.bytes"
         [ roundtrips fuzzBytes Codec.bytes
         ]
+    , describe "Codec.byte"
+        [ roundtrips (Fuzz.intRange 0 255) Codec.byte
+        ]
     ]
 
 

@@ -2,7 +2,7 @@ module Codec.Serialize exposing
     ( Codec, Error(..)
     , Decoder, getDecoder, fromBytes, fromString, errorToString
     , Encoder, getEncoder, toBytes, toString
-    , string, bool, char, float, int, bytes
+    , string, bool, char, float, int, bytes, byte
     , maybe, list, array, dict, set, tuple, triple, result, enum
     , RecordCodec, record, field, finishRecord
     , CustomTypeCodec, customType, variant0, variant1, variant2, variant3, variant4, variant5, variant6, variant7, variant8, finishCustomType
@@ -30,7 +30,7 @@ module Codec.Serialize exposing
 
 # Primitives
 
-@docs string, bool, char, float, int, bytes
+@docs string, bool, char, float, int, bytes, byte
 
 
 # Data Structures
@@ -604,6 +604,30 @@ bytes =
                     , BE.bytes bytes_
                     ]
         , decoder = BD.unsignedInt32 endian |> BD.andThen (\length -> BD.bytes length |> BD.map Ok)
+        }
+
+
+{-| Store an integer ranging from 0 to 255. Useful if you have a small you want to encode and not use up a lot of space.
+
+    type alias Color =
+        { red : Int
+        , green : Int
+        , blue : Int
+        }
+
+    color =
+        Color.record Color
+            |> Codec.field .red byte
+            |> Codec.field .green byte
+            |> Codec.field .blue byte
+            |> Codec.finishRecord
+
+-}
+byte : Codec Int
+byte =
+    Codec
+        { encoder = BE.unsignedInt8
+        , decoder = BD.unsignedInt8 |> BD.map Ok
         }
 
 
