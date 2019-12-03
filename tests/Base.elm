@@ -8,8 +8,9 @@ import Dict
 import Expect exposing (Expectation)
 import Fuzz exposing (Fuzzer)
 import Set
-import Test exposing (Test, describe, fuzz, test)
+import Test exposing (Test, describe, fuzz, only, test)
 import Toop exposing (T1(..), T6(..))
+import Url
 
 
 suite : Test
@@ -34,6 +35,13 @@ suite =
             ]
         , describe "errorToString" errorToStringTest
         , describe "enum" enumTest
+        , fuzz fuzzBytes "toString is url safe" <|
+            \bytes ->
+                let
+                    expected =
+                        Codec.toString Codec.bytes bytes
+                in
+                expected |> Url.percentEncode |> Expect.equal expected
         ]
 
 
@@ -378,16 +386,16 @@ intToPeano peano value =
 maybeTests : List Test
 maybeTests =
     [ describe "single"
-        [ roundtrips
-            (Fuzz.oneOf
-                [ Fuzz.constant Nothing
-                , Fuzz.map Just maxRangeIntFuzz
-                ]
-            )
-          <|
-            Codec.maybe Codec.int
+        [ roundtrips (maybeFuzz maxRangeIntFuzz) (Codec.maybe Codec.int)
         ]
     ]
+
+
+maybeFuzz fuzzer =
+    Fuzz.oneOf
+        [ Fuzz.constant Nothing
+        , Fuzz.map Just fuzzer
+        ]
 
 
 errorToStringTest : List Test

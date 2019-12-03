@@ -66,6 +66,7 @@ import Bytes.Decode as BD
 import Bytes.Encode as BE
 import Dict exposing (Dict)
 import Ordinal
+import Regex exposing (Regex)
 import Set exposing (Set)
 import Toop exposing (T4(..), T5(..), T6(..), T7(..), T8(..))
 
@@ -239,12 +240,49 @@ fromBytes codec bytes_ =
 
 fromString : Codec a -> String -> Result Error a
 fromString codec base64 =
-    case Base64.toBytes base64 of
+    case decode base64 of
         Just bytes_ ->
             fromBytes codec bytes_
 
         Nothing ->
             Err DataCorrupted
+
+
+decode : String -> Maybe Bytes.Bytes
+decode base64text =
+    let
+        replaceChar rematch =
+            case rematch.match of
+                "-" ->
+                    "+"
+
+                _ ->
+                    "/"
+
+        strlen =
+            String.length base64text
+    in
+    if strlen == 0 then
+        BE.encode (BE.sequence []) |> Just
+
+    else
+        let
+            hanging =
+                modBy 4 strlen
+
+            ilen =
+                if hanging == 0 then
+                    0
+
+                else
+                    4 - hanging
+        in
+        Regex.replace replaceFromUrl replaceChar (base64text ++ String.repeat ilen "=") |> Base64.toBytes
+
+
+replaceFromUrl : Regex
+replaceFromUrl =
+    Regex.fromString "[-_]" |> Maybe.withDefault Regex.never
 
 
 
@@ -267,7 +305,29 @@ toBytes codec value =
 
 toString : Codec a -> a -> String
 toString codec =
-    toBytes codec >> Base64.fromBytes >> Maybe.withDefault ""
+    toBytes codec >> replaceBase64Chars
+
+
+replaceBase64Chars : Bytes.Bytes -> String
+replaceBase64Chars =
+    let
+        replaceChar rematch =
+            case rematch.match of
+                "+" ->
+                    "-"
+
+                "/" ->
+                    "_"
+
+                _ ->
+                    ""
+    in
+    Base64.fromBytes >> Maybe.withDefault "" >> Regex.replace replaceForUrl replaceChar
+
+
+replaceForUrl : Regex
+replaceForUrl =
+    Regex.fromString "[\\+/=]" |> Maybe.withDefault Regex.never
 
 
 
