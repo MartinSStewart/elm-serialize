@@ -41,10 +41,11 @@ roundtrips : Fuzzer a -> Codec a -> Test
 roundtrips fuzzer codec =
     fuzz fuzzer "is a roundtrip" <|
         \value ->
-            value
-                |> Codec.toBytes codec
-                |> Codec.fromBytes codec
-                |> Expect.equal (Ok value)
+            Expect.all
+                [ Codec.toBytes codec >> Codec.fromBytes codec >> Expect.equal (Ok value)
+                , Codec.toString codec >> Codec.fromString codec >> Expect.equal (Ok value)
+                ]
+                value
 
 
 basicTests : List Test
