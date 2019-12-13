@@ -7,7 +7,7 @@ module Codec.Serialize exposing
     , RecordCodec, record, field, finishRecord
     , CustomTypeCodec, customType, variant0, variant1, variant2, variant3, variant4, variant5, variant6, variant7, variant8, finishCustomType
     , map, andThen
-    , constant, lazy
+    , lazy
     )
 
 {-| A `Codec a` contains a `Bytes.Decoder a` and the corresponding `a -> Bytes.Encoder`.
@@ -55,7 +55,7 @@ module Codec.Serialize exposing
 
 # Fancy Codecs
 
-@docs constant, lazy
+@docs lazy
 
 -}
 
@@ -102,6 +102,12 @@ type Error
     | ArrayCodecError { arrayIndex : Int, error : Error }
     | TupleCodecError { tupleIndex : Int, error : Error }
     | TripleCodecError { tripleIndex : Int, error : Error }
+    | SerializerOutOfDate { dataVersion : Int }
+
+
+version : Int
+version =
+    1
 
 
 errorToString : Error -> String
@@ -197,6 +203,13 @@ errorToString_ errorData previousText =
         ResultCodecError ->
             previousText
 
+        SerializerOutOfDate { dataVersion } ->
+            "This serialized data is version "
+                ++ String.fromInt dataVersion
+                ++ ". This package can only deserialize data from version "
+                ++ String.fromInt version
+                ++ " and lower. Maybe there's a more up to date package? If there isn't, this data is probably corrupted."
+
 
 {-| Describes how to generate a sequence of bytes.
 -}
@@ -230,7 +243,22 @@ getDecoder (Codec m) =
 -}
 fromBytes : Codec a -> Bytes.Bytes -> Result Error a
 fromBytes codec bytes_ =
-    case BD.decode (getDecoder codec) bytes_ of
+    let
+        decoder =
+            BD.unsignedInt8
+                |> BD.andThen
+                    (\value ->
+                        if value == 0 then
+                            Err DataCorrupted |> BD.succeed
+
+                        else if value == version then
+                            getDecoder codec
+
+                        else
+                            Err (SerializerOutOfDate { dataVersion = value }) |> BD.succeed
+                    )
+    in
+    case BD.decode decoder bytes_ of
         Just value ->
             value
 
@@ -300,7 +328,11 @@ getEncoder (Codec m) =
 -}
 toBytes : Codec a -> a -> Bytes.Bytes
 toBytes codec value =
-    getEncoder codec value |> BE.encode
+    BE.sequence
+        [ BE.unsignedInt8 version
+        , value |> getEncoder codec
+        ]
+        |> BE.encode
 
 
 toString : Codec a -> a -> String
@@ -1441,14 +1473,4 @@ lazy f =
     Codec
         { decoder = BD.succeed () |> BD.andThen (\() -> getDecoder (f ()))
         , encoder = \value -> getEncoder (f ()) value
-        }
-
-
-{-| Create a `Codec` that encodes nothing and always decodes as the same value.
--}
-constant : a -> Codec a
-constant default_ =
-    Codec
-        { decoder = BD.succeed (Ok default_)
-        , encoder = \_ -> BE.sequence []
         }

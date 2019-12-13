@@ -25,14 +25,6 @@ suite =
         , describe "errorTests" errorTests
         , describe "lazy" lazyTests
         , describe "maybe" maybeTests
-        , describe "constant"
-            [ test "roundtrips"
-                (\_ ->
-                    Codec.constant 632
-                        |> (\d -> Codec.fromBytes d (Bytes.Encode.sequence [] |> Bytes.Encode.encode))
-                        |> Expect.equal (Ok 632)
-                )
-            ]
         , describe "errorToString" errorToStringTest
         , describe "enum" enumTest
         , fuzz fuzzBytes "toString is url safe" <|
@@ -42,6 +34,24 @@ suite =
                         Codec.toString Codec.bytes bytes
                 in
                 expected |> Url.percentEncode |> Expect.equal expected
+        , test "DataCorrupted error if version is 0" <|
+            \_ ->
+                Bytes.Encode.sequence [ Bytes.Encode.unsignedInt8 0, Bytes.Encode.unsignedInt8 5 ]
+                    |> Bytes.Encode.encode
+                    |> Codec.fromBytes Codec.byte
+                    |> Expect.equal (Err Codec.DataCorrupted)
+        , test "Ok result if version is 1" <|
+            \_ ->
+                Bytes.Encode.sequence [ Bytes.Encode.unsignedInt8 1, Bytes.Encode.unsignedInt8 5 ]
+                    |> Bytes.Encode.encode
+                    |> Codec.fromBytes Codec.byte
+                    |> Expect.equal (Ok 5)
+        , fuzz (Fuzz.intRange 2 255) "SerializerOutOfDate if version is greater than Serializer version" <|
+            \version ->
+                Bytes.Encode.sequence [ Bytes.Encode.unsignedInt8 version, Bytes.Encode.unsignedInt8 5 ]
+                    |> Bytes.Encode.encode
+                    |> Codec.fromBytes Codec.byte
+                    |> Expect.equal (Codec.SerializerOutOfDate { dataVersion = version } |> Err)
         ]
 
 
