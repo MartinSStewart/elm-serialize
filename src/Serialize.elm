@@ -1,4 +1,4 @@
-module Codec.Serialize exposing
+module Serialize exposing
     ( Codec, Error(..)
     , decodeFromBytes, decodeFromString
     , encodeToBytes, encodeToString
@@ -75,7 +75,7 @@ import Toop exposing (T4(..), T5(..), T6(..), T7(..), T8(..))
 -- DEFINITION
 
 
-{-| A value that knows how to encode and decode data.
+{-| A value that knows how to encode and decode an Elm data structure.
 -}
 type Codec a
     = Codec
@@ -85,23 +85,23 @@ type Codec a
 
 
 type Error
-    = AndThenCodecError { errorMessage : String }
-    | EnumCodecNegativeIndex
-    | EnumCodecValueNotFound
-    | CharCodecError
-    | BoolCodecError
-    | DictCodecError
-    | SetCodecError
-    | MaybeCodecError
-    | ResultCodecError
+    = AndThenError { errorMessage : String }
+    | EnumNegativeIndex
+    | EnumValueNotFound
+    | CharError
+    | BoolError
+    | DictError
+    | SetError
+    | MaybeError
+    | ResultError
     | DataCorrupted
-    | CustomTypeCodecError { variantIndex : Int, variantSize : Int, variantConstructorIndex : Int, error : Error }
+    | CustomTypeError { variantIndex : Int, variantSize : Int, variantConstructorIndex : Int, error : Error }
     | NoCustomTypeVariantMatches
-    | RecordCodecError { fieldIndex : Int, error : Error }
-    | ListCodecError { listIndex : Int, error : Error }
-    | ArrayCodecError { arrayIndex : Int, error : Error }
-    | TupleCodecError { tupleIndex : Int, error : Error }
-    | TripleCodecError { tripleIndex : Int, error : Error }
+    | RecordError { fieldIndex : Int, error : Error }
+    | ListError { listIndex : Int, error : Error }
+    | ArrayError { arrayIndex : Int, error : Error }
+    | TupleError { tupleIndex : Int, error : Error }
+    | TripleError { tripleIndex : Int, error : Error }
     | SerializerOutOfDate { dataVersion : Int }
 
 
@@ -125,13 +125,13 @@ errorToString errorData =
 errorToString_ : Error -> String -> String
 errorToString_ errorData previousText =
     case errorData of
-        AndThenCodecError { errorMessage } ->
+        AndThenError { errorMessage } ->
             previousText ++ "The Codec.andThen returned this error message:\n    " ++ errorMessage
 
         DataCorrupted ->
             previousText ++ "Data corrupted. This probably means you tried reading in data that wasn't compatible with this codec."
 
-        CustomTypeCodecError { variantIndex, variantSize, variantConstructorIndex, error } ->
+        CustomTypeError { variantIndex, variantSize, variantConstructorIndex, error } ->
             let
                 variantText =
                     "|> variant"
@@ -152,55 +152,55 @@ errorToString_ errorData previousText =
         NoCustomTypeVariantMatches ->
             previousText ++ " in a custom type codec. There wasn't any variants with the correct id. This might mean you've removed a variant and tried to decode data that needed that variant."
 
-        RecordCodecError { fieldIndex, error } ->
+        RecordError { fieldIndex, error } ->
             previousText
                 ++ " in a record codec, in the "
                 ++ Ordinal.ordinal (fieldIndex + 1)
                 ++ " field\n\n"
                 |> errorToString_ error
 
-        ListCodecError { listIndex, error } ->
+        ListError { listIndex, error } ->
             previousText
                 ++ " in a list codec, in the "
                 ++ Ordinal.ordinal (listIndex + 1)
                 ++ " element\n\n"
                 |> errorToString_ error
 
-        TupleCodecError { tupleIndex, error } ->
+        TupleError { tupleIndex, error } ->
             previousText
                 ++ " in a tuple codec, in the "
                 ++ Ordinal.ordinal (tupleIndex + 1)
                 ++ " element\n\n"
                 |> errorToString_ error
 
-        EnumCodecNegativeIndex ->
+        EnumNegativeIndex ->
             previousText ++ "EnumNegativeIndex"
 
-        EnumCodecValueNotFound ->
+        EnumValueNotFound ->
             previousText ++ "EnumValueNotFound"
 
-        CharCodecError ->
+        CharError ->
             previousText ++ "CharError"
 
-        BoolCodecError ->
+        BoolError ->
             previousText ++ "BoolError"
 
-        DictCodecError ->
+        DictError ->
             previousText
 
-        SetCodecError ->
+        SetError ->
             previousText
 
-        ArrayCodecError { arrayIndex, error } ->
+        ArrayError { arrayIndex, error } ->
             previousText
 
-        TripleCodecError { tripleIndex, error } ->
+        TripleError { tripleIndex, error } ->
             previousText
 
-        MaybeCodecError ->
+        MaybeError ->
             previousText
 
-        ResultCodecError ->
+        ResultError ->
             previousText
 
         SerializerOutOfDate { dataVersion } ->
@@ -335,6 +335,16 @@ encodeToBytes codec value =
         |> BE.encode
 
 
+{-| Convert an Elm value into a string. This string contains only url safe characters, so you can do the following:
+
+    import Serlialize as S
+
+    myUrl =
+        "www.mywebsite.com/?data=" ++ S.encodeToString S.float 1234
+
+and not risk generating an invalid url.
+
+-}
 encodeToString : Codec a -> a -> String
 encodeToString codec =
     encodeToBytes codec >> replaceBase64Chars
@@ -414,7 +424,7 @@ bool =
                             Ok True
 
                         _ ->
-                            Err BoolCodecError
+                            Err BoolError
                 )
         )
 
@@ -455,7 +465,7 @@ char =
                             Ok char_
 
                         Nothing ->
-                            Err CharCodecError
+                            Err CharError
                 )
         )
 
@@ -465,6 +475,13 @@ char =
 
 
 {-| Codec for serializing a `Maybe`
+
+    import Serialize as S
+
+    maybeIntCodec : S.Codec (Maybe Int)
+    maybeIntCodec =
+        S.Maybe S.Int
+
 -}
 maybe : Codec a -> Codec (Maybe a)
 maybe codec =
@@ -487,12 +504,19 @@ maybe codec =
                         Ok ok
 
                     Err _ ->
-                        Err MaybeCodecError
+                        Err MaybeError
             )
             identity
 
 
 {-| Codec for serializing a `List`
+
+    import Serialize as S
+
+    listOfStringsCodec : S.Codec (List String)
+    listOfStringsCodec =
+        S.list S.string
+
 -}
 list : Codec a -> Codec (List a)
 list codec =
@@ -526,7 +550,7 @@ listStep length decoder_ ( n, xs ) =
                         BD.Loop ( n - 1, ok :: xs )
 
                     Err err ->
-                        BD.Done (ListCodecError { listIndex = length - n, error = err } |> Err)
+                        BD.Done (ListError { listIndex = length - n, error = err } |> Err)
             )
             decoder_
 
@@ -542,8 +566,8 @@ array codec =
                     Ok ok ->
                         Array.fromList ok |> Ok
 
-                    Err (ListCodecError { listIndex, error }) ->
-                        ArrayCodecError { arrayIndex = listIndex, error = error } |> Err
+                    Err (ListError { listIndex, error }) ->
+                        ArrayError { arrayIndex = listIndex, error = error } |> Err
 
                     Err _ ->
                         -- This should never happen.
@@ -553,6 +577,16 @@ array codec =
 
 
 {-| Codec for serializing a `Dict`
+
+    import Serialize as S
+
+    type alias Name =
+        String
+
+    peoplesAgeCodec : S.Codec (Dict Name Int)
+    peoplesAgeCodec =
+        S.dict S.string S.int
+
 -}
 dict : Codec comparable -> Codec a -> Codec (Dict comparable a)
 dict keyCodec valueCodec =
@@ -564,7 +598,7 @@ dict keyCodec valueCodec =
                         Dict.fromList ok |> Ok
 
                     Err _ ->
-                        Err SetCodecError
+                        Err SetError
             )
             Dict.toList
 
@@ -581,12 +615,19 @@ set codec =
                         Set.fromList ok |> Ok
 
                     Err _ ->
-                        Err SetCodecError
+                        Err SetError
             )
             Set.toList
 
 
 {-| Codec for serializing a tuple with 2 elements
+
+    import Serialize as S
+
+    pointCodec : S.Codec ( Float, Float )
+    pointCodec =
+        S.tuple S.float S.float
+
 -}
 tuple : Codec a -> Codec b -> Codec ( a, b )
 tuple m1 m2 =
@@ -605,10 +646,10 @@ tuple m1 m2 =
                             Ok ( aOk, bOk )
 
                         ( Err error, _ ) ->
-                            TupleCodecError { tupleIndex = 0, error = error } |> Err
+                            TupleError { tupleIndex = 0, error = error } |> Err
 
                         ( _, Err error ) ->
-                            TupleCodecError { tupleIndex = 1, error = error } |> Err
+                            TupleError { tupleIndex = 1, error = error } |> Err
                 )
                 (getDecoder m1)
                 (getDecoder m2)
@@ -616,6 +657,13 @@ tuple m1 m2 =
 
 
 {-| Codec for serializing a tuple with 3 elements
+
+    import Serialize as S
+
+    pointCodec : S.Codec ( Float, Float, Float )
+    pointCodec =
+        S.tuple S.float S.float S.float
+
 -}
 triple : Codec a -> Codec b -> Codec c -> Codec ( a, b, c )
 triple m1 m2 m3 =
@@ -635,13 +683,13 @@ triple m1 m2 m3 =
                             Ok ( aOk, bOk, cOk )
 
                         ( Err error, _, _ ) ->
-                            TripleCodecError { tripleIndex = 0, error = error } |> Err
+                            TripleError { tripleIndex = 0, error = error } |> Err
 
                         ( _, Err error, _ ) ->
-                            TripleCodecError { tripleIndex = 1, error = error } |> Err
+                            TripleError { tripleIndex = 1, error = error } |> Err
 
                         ( _, _, Err error ) ->
-                            TripleCodecError { tripleIndex = 2, error = error } |> Err
+                            TripleError { tripleIndex = 2, error = error } |> Err
                 )
                 (getDecoder m1)
                 (getDecoder m2)
@@ -672,16 +720,23 @@ result errorCodec valueCodec =
                         Ok ok
 
                     Err _ ->
-                        Err ResultCodecError
+                        Err ResultError
             )
             identity
 
 
-{-| Codec for serializing `Bytes` from [elm/bytes](https://package.elm-lang.org/packages/elm/bytes/latest/).
-This is useful if you want to include binary data that you're going to decode elsewhere.
+{-| Codec for serializing [`Bytes`](https://package.elm-lang.org/packages/elm/bytes/latest/).
+This is useful in combination with andThen to encode and decode external binary data formats.
 
-    pngCodec =
-        Codec.bytes |> Codec.map pngEncoder pngDecoder
+    import Image exposing (Image)
+    import Serialize as S
+
+    imageCodec : S.Codec Image
+    imageCodec =
+        S.bytes
+            |> S.andThen
+                (Image.decode >> Result.fromMaybe (AndThenError { errorMessage = "Invalid png" }))
+                Image.toPng
 
 -}
 bytes : Codec Bytes.Bytes
@@ -700,18 +755,21 @@ bytes =
 {-| Codec for serializing an integer ranging from 0 to 255.
 This is useful if you have a small integer you want to serialize and not use up a lot of space.
 
+    import Serialize as S
+
     type alias Color =
         { red : Int
         , green : Int
         , blue : Int
         }
 
+    color : S.Codec Color
     color =
         Color.record Color
-            |> Codec.field .red byte
-            |> Codec.field .green byte
-            |> Codec.field .blue byte
-            |> Codec.finishRecord
+            |> S.field .red byte
+            |> S.field .green byte
+            |> S.field .blue byte
+            |> S.finishRecord
 
 -}
 byte : Codec Int
@@ -725,6 +783,8 @@ byte =
 {-| A codec for serializing an item from a list of possible items.
 If you try to encode an item that isn't in the list then the first item is defaulted to.
 
+    import Serialize as S
+
     type DaysOfWeek
         = Monday
         | Tuesday
@@ -734,8 +794,9 @@ If you try to encode an item that isn't in the list then the first item is defau
         | Saturday
         | Sunday
 
+    daysOfWeekCodec : S.Codec DaysOfWeek
     daysOfWeekCodec =
-        Codec.enum Monday [ Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday ]
+        S.enum Monday [ Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday ]
 
 -}
 enum : a -> List a -> Codec a
@@ -752,10 +813,10 @@ enum defaultItem items =
             |> BD.map
                 (\index ->
                     if index < 0 then
-                        Err EnumCodecNegativeIndex
+                        Err EnumNegativeIndex
 
                     else if index > List.length items then
-                        Err EnumCodecValueNotFound
+                        Err EnumValueNotFound
 
                     else
                         getAt (index - 1) items |> Maybe.withDefault defaultItem |> Ok
@@ -811,18 +872,20 @@ type RecordCodec a b
 
 {-| Start creating a codec for a record.
 
+    import Serialize as S
+
     type alias Point =
         { x : Int
         , y : Int
         }
 
-    pointCodec : Codec Point
+    pointCodec : S.Codec Point
     pointCodec =
-        Codec.object Point
+        S.object Point
             -- Note that adding, removing, or reordering fields will prevent you from decoding any data you've previously encoded.
-            |> Codec.field .x Codec.int
-            |> Codec.field .y Codec.int
-            |> Codec.finishObject
+            |> S.field .x S.int
+            |> S.field .y S.int
+            |> S.finishObject
 
 -}
 record : b -> RecordCodec a b
@@ -851,7 +914,7 @@ field getter codec (RecordCodec ocodec) =
                             Err fError
 
                         ( _, Err xError ) ->
-                            RecordCodecError { fieldIndex = ocodec.fieldCount, error = xError } |> Err
+                            RecordError { fieldIndex = ocodec.fieldCount, error = xError } |> Err
                 )
                 ocodec.decoder
                 (getDecoder codec)
@@ -886,14 +949,16 @@ type CustomTypeCodec match v
 {-| Starts building a `Codec` for a custom type.
 You need to pass a pattern matching function, see the FAQ for details.
 
+    import Serialize as S
+
     type Semaphore
         = Red Int String Bool
         | Yellow Float
         | Green
 
-    semaphoreCodec : Codec Semaphore
+    semaphoreCodec : S.Codec Semaphore
     semaphoreCodec =
-        Codec.custom
+        S.custom
             (\redEncoder yellowEncoder greenEncoder value ->
                 case value of
                     Red i s b ->
@@ -906,11 +971,11 @@ You need to pass a pattern matching function, see the FAQ for details.
                         greenEncoder
             )
             -- Note that removing a variant, inserting a variant before an existing one, or swapping two variants will prevent you from decoding any data you've previously encoded.
-            |> Codec.variant3 Red Codec.int Codec.string Codec.bool
-            |> Codec.variant1 Yellow Codec.float
-            |> Codec.variant0 Green
+            |> S.variant3 Red S.int S.string S.bool
+            |> S.variant1 Yellow S.float
+            |> S.variant0 Green
             -- It's safe to add new variants here later though
-            |> Codec.finishCustom
+            |> S.finishCustom
 
 -}
 customType : match -> CustomTypeCodec match value
@@ -958,7 +1023,7 @@ variant0 ctor =
 
 
 variantError customIndex variantSize variantIndex error =
-    CustomTypeCodecError { variantIndex = customIndex, variantSize = variantSize, variantConstructorIndex = variantIndex, error = error } |> Err
+    CustomTypeError { variantIndex = customIndex, variantSize = variantSize, variantConstructorIndex = variantIndex, error = error } |> Err
 
 
 {-| Define a variant with 1 parameters for a custom type.
@@ -1386,12 +1451,14 @@ finishCustomType (CustomTypeCodec am) =
 
 {-| Map from one codec to another codec
 
+    import Serialize as S
+
     type UserId
         = UserId Int
 
-    userIdCodec : Codec UserId
+    userIdCodec : S.Codec UserId
     userIdCodec =
-        Codec.int |> Codec.map UserId (\(UserId id) -> id)
+        S.int |> S.map UserId (\(UserId id) -> id)
 
 -}
 map : (a -> b) -> (b -> a) -> Codec a -> Codec b
@@ -1419,11 +1486,13 @@ map_ fromBytes_ toBytes_ codec =
 
 {-| Map from one codec to another codec in a way that can potentially fail when decoding.
 
+    import Serialize as S
+
     {-| Volume must be between 0 and 1.
     -}
     volumeCodec =
-        Codec.float
-            |> Codec.andThen
+        S.float
+            |> S.andThen
                 (\volume ->
                     if volume <= 1 && volume >= 0 then
                         Ok volume
@@ -1443,7 +1512,7 @@ andThen fromBytes_ toBytes_ codec =
                     (\value ->
                         case value of
                             Ok ok ->
-                                fromBytes_ ok |> Result.mapError (\errorMessage -> AndThenCodecError { errorMessage = errorMessage })
+                                fromBytes_ ok |> Result.mapError (\errorMessage -> AndThenError { errorMessage = errorMessage })
 
                             Err err ->
                                 Err err
@@ -1458,20 +1527,22 @@ andThen fromBytes_ toBytes_ codec =
 
 {-| Handle situations where you need to define a codec in terms of itself.
 
+    import Serialize as S
+
     type Peano
         = Peano (Maybe Peano)
 
     {-| The compiler will complain that this function causes an infinite loop.
     -}
-    badPeanoCodec : Codec Peano
+    badPeanoCodec : S.Codec Peano
     badPeanoCodec =
-        Codec.maybe badPeanoCodec |> Codec.map Peano (\(Peano a) -> a)
+        S.maybe badPeanoCodec |> S.map Peano (\(Peano a) -> a)
 
     {-| Now the compiler is happy!
     -}
-    goodPeanoCodec : Codec Peano
+    goodPeanoCodec : S.Codec Peano
     goodPeanoCodec =
-        Codec.maybe (Codec.lazy (\() -> goodPeanoCodec)) |> Codec.map Peano (\(Peano a) -> a)
+        S.maybe (S.lazy (\() -> goodPeanoCodec)) |> S.map Peano (\(Peano a) -> a)
 
 -}
 lazy : (() -> Codec a) -> Codec a
