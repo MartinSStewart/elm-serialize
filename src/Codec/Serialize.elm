@@ -1,6 +1,6 @@
 module Codec.Serialize exposing
     ( Codec, Error(..)
-    , decodeFromBytes, decodeFromString, errorToString
+    , decodeFromBytes, decodeFromString
     , encodeToBytes, encodeToString
     , string, bool, char, float, int, bytes, byte
     , maybe, list, array, dict, set, tuple, triple, result, enum
@@ -10,7 +10,7 @@ module Codec.Serialize exposing
     , lazy
     )
 
-{-| A `Codec a` contains a `Bytes.Decoder a` and the corresponding `a -> Bytes.Encoder`.
+{-|
 
 
 # Definition
@@ -20,7 +20,7 @@ module Codec.Serialize exposing
 
 # Decode
 
-@docs decodeFromBytes, decodeFromString, errorToString
+@docs decodeFromBytes, decodeFromString
 
 
 # Encode
@@ -85,7 +85,7 @@ type Codec a
 
 
 type Error
-    = AndThenCodecError String
+    = AndThenCodecError { errorMessage : String }
     | EnumCodecNegativeIndex
     | EnumCodecValueNotFound
     | CharCodecError
@@ -96,7 +96,7 @@ type Error
     | ResultCodecError
     | DataCorrupted
     | CustomTypeCodecError { variantIndex : Int, variantSize : Int, variantConstructorIndex : Int, error : Error }
-    | NoVariantMatches
+    | NoCustomTypeVariantMatches
     | RecordCodecError { fieldIndex : Int, error : Error }
     | ListCodecError { listIndex : Int, error : Error }
     | ArrayCodecError { arrayIndex : Int, error : Error }
@@ -125,8 +125,8 @@ errorToString errorData =
 errorToString_ : Error -> String -> String
 errorToString_ errorData previousText =
     case errorData of
-        AndThenCodecError text ->
-            previousText ++ "The Codec.andThen returned this error message:\n    " ++ text
+        AndThenCodecError { errorMessage } ->
+            previousText ++ "The Codec.andThen returned this error message:\n    " ++ errorMessage
 
         DataCorrupted ->
             previousText ++ "Data corrupted. This probably means you tried reading in data that wasn't compatible with this codec."
@@ -138,18 +138,18 @@ errorToString_ errorData previousText =
                         ++ String.fromInt variantSize
                         ++ " _"
                         ++ String.repeat variantConstructorIndex " _"
-                        ++ " x"
+                        ++ " error"
                         ++ String.repeat (variantSize - 1 - variantConstructorIndex) " codec"
             in
             previousText
                 ++ " in a custom type codec, in the "
                 ++ Ordinal.ordinal (variantIndex + 1)
-                ++ " variant called. The line looks something like this (x marks the position of the parameter that failed to decode):\n    "
+                ++ " variant called. The line looks something like this:\n    "
                 ++ variantText
                 ++ "\n\n"
                 |> errorToString_ error
 
-        NoVariantMatches ->
+        NoCustomTypeVariantMatches ->
             previousText ++ " in a custom type codec. There wasn't any variants with the correct id. This might mean you've removed a variant and tried to decode data that needed that variant."
 
         RecordCodecError { fieldIndex, error } ->
@@ -820,8 +820,8 @@ type RecordCodec a b
     pointCodec =
         Codec.object Point
             -- Note that adding, removing, or reordering fields will prevent you from decoding any data you've previously encoded.
-            |> Codec.field .x Codec.signedInt
-            |> Codec.field .y Codec.signedInt
+            |> Codec.field .x Codec.int
+            |> Codec.field .y Codec.int
             |> Codec.finishObject
 
 -}
@@ -906,8 +906,8 @@ You need to pass a pattern matching function, see the FAQ for details.
                         greenEncoder
             )
             -- Note that removing a variant, inserting a variant before an existing one, or swapping two variants will prevent you from decoding any data you've previously encoded.
-            |> Codec.variant3 Red Codec.signedInt Codec.string Codec.bool
-            |> Codec.variant1 Yellow Codec.float64
+            |> Codec.variant3 Red Codec.int Codec.string Codec.bool
+            |> Codec.variant1 Yellow Codec.float
             |> Codec.variant0 Green
             -- It's safe to add new variants here later though
             |> Codec.finishCustom
@@ -1375,7 +1375,7 @@ finishCustomType (CustomTypeCodec am) =
             BD.unsignedInt16 endian
                 |> BD.andThen
                     (\tag ->
-                        am.decoder tag (BD.succeed (Err NoVariantMatches))
+                        am.decoder tag (BD.succeed (Err NoCustomTypeVariantMatches))
                     )
         }
 
@@ -1422,7 +1422,7 @@ map_ fromBytes_ toBytes_ codec =
     {-| Volume must be between 0 and 1.
     -}
     volumeCodec =
-        Codec.float64
+        Codec.float
             |> Codec.andThen
                 (\volume ->
                     if volume <= 1 && volume >= 0 then
@@ -1443,7 +1443,7 @@ andThen fromBytes_ toBytes_ codec =
                     (\value ->
                         case value of
                             Ok ok ->
-                                fromBytes_ ok |> Result.mapError AndThenCodecError
+                                fromBytes_ ok |> Result.mapError (\errorMessage -> AndThenCodecError { errorMessage = errorMessage })
 
                             Err err ->
                                 Err err
