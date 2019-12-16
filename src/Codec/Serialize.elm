@@ -1,7 +1,7 @@
 module Codec.Serialize exposing
     ( Codec, Error(..)
-    , Decoder, getDecoder, fromBytes, fromString, errorToString
-    , Encoder, getEncoder, toBytes, toString
+    , decodeFromBytes, decodeFromString, errorToString
+    , encodeToBytes, encodeToString
     , string, bool, char, float, int, bytes, byte
     , maybe, list, array, dict, set, tuple, triple, result, enum
     , RecordCodec, record, field, finishRecord
@@ -20,12 +20,12 @@ module Codec.Serialize exposing
 
 # Decode
 
-@docs Decoder, getDecoder, fromBytes, fromString, errorToString
+@docs decodeFromBytes, decodeFromString, errorToString
 
 
 # Encode
 
-@docs Encoder, getEncoder, toBytes, toString
+@docs encodeToBytes, encodeToString
 
 
 # Primitives
@@ -75,7 +75,7 @@ import Toop exposing (T4(..), T5(..), T6(..), T7(..), T8(..))
 -- DEFINITION
 
 
-{-| A value that knows how to encode and decode a sequence of bytes.
+{-| A value that knows how to encode and decode data.
 -}
 type Codec a
     = Codec
@@ -241,8 +241,8 @@ getDecoder (Codec m) =
 
 {-| Run a `Codec` to turn a sequence of bytes into an Elm value.
 -}
-fromBytes : Codec a -> Bytes.Bytes -> Result Error a
-fromBytes codec bytes_ =
+decodeFromBytes : Codec a -> Bytes.Bytes -> Result Error a
+decodeFromBytes codec bytes_ =
     let
         decoder =
             BD.unsignedInt8
@@ -266,11 +266,11 @@ fromBytes codec bytes_ =
             Err DataCorrupted
 
 
-fromString : Codec a -> String -> Result Error a
-fromString codec base64 =
+decodeFromString : Codec a -> String -> Result Error a
+decodeFromString codec base64 =
     case decode base64 of
         Just bytes_ ->
-            fromBytes codec bytes_
+            decodeFromBytes codec bytes_
 
         Nothing ->
             Err DataCorrupted
@@ -326,8 +326,8 @@ getEncoder (Codec m) =
 
 {-| Convert an Elm value into a sequence of bytes.
 -}
-toBytes : Codec a -> a -> Bytes.Bytes
-toBytes codec value =
+encodeToBytes : Codec a -> a -> Bytes.Bytes
+encodeToBytes codec value =
     BE.sequence
         [ BE.unsignedInt8 version
         , value |> getEncoder codec
@@ -335,9 +335,9 @@ toBytes codec value =
         |> BE.encode
 
 
-toString : Codec a -> a -> String
-toString codec =
-    toBytes codec >> replaceBase64Chars
+encodeToString : Codec a -> a -> String
+encodeToString codec =
+    encodeToBytes codec >> replaceBase64Chars
 
 
 replaceBase64Chars : Bytes.Bytes -> String
@@ -366,9 +366,6 @@ replaceForUrl =
 -- BASE
 
 
-{-| If necessary you can create your own `Codec` directly.
-This should be a measure of last resort though! If you need to encode and decode records and custom types, use `object` and `custom` respectively.
--}
 build : (a -> Encoder) -> Decoder (Result Error a) -> Codec a
 build encoder_ decoder_ =
     Codec
@@ -377,7 +374,7 @@ build encoder_ decoder_ =
         }
 
 
-{-| `Codec` between a sequence of bytes and an Elm `String`
+{-| Codec for serializing a `String`
 -}
 string : Codec String
 string =
@@ -394,7 +391,7 @@ string =
         )
 
 
-{-| `Codec` between a sequence of bytes and an Elm `Bool`
+{-| Codec for serializing a `Bool`
 -}
 bool : Codec Bool
 bool =
@@ -422,21 +419,21 @@ bool =
         )
 
 
-{-| `Codec` between a signed 32-bit integer and an Elm `Int`
+{-| Codec for serializing an `Int`
 -}
 int : Codec Int
 int =
     build (toFloat >> BE.float64 endian) (BD.float64 endian |> BD.map (round >> Ok))
 
 
-{-| `Codec` between a 64-bit float and an Elm `Float`
+{-| Codec for serializing a `Float`
 -}
 float : Codec Float
 float =
     build (BE.float64 endian) (BD.float64 endian |> BD.map Ok)
 
 
-{-| `Codec` between a sequence of bytes and an Elm `Char`
+{-| Codec for serializing a `Char`
 -}
 char : Codec Char
 char =
@@ -467,7 +464,7 @@ char =
 -- DATA STRUCTURES
 
 
-{-| Represents an optional value.
+{-| Codec for serializing a `Maybe`
 -}
 maybe : Codec a -> Codec (Maybe a)
 maybe codec =
@@ -495,7 +492,7 @@ maybe codec =
             identity
 
 
-{-| `Codec` between a sequence of bytes and an Elm `List`.
+{-| Codec for serializing a `List`
 -}
 list : Codec a -> Codec (List a)
 list codec =
@@ -534,7 +531,7 @@ listStep length decoder_ ( n, xs ) =
             decoder_
 
 
-{-| `Codec` between a sequence of bytes and an Elm `Array`.
+{-| Codec for serializing an `Array`
 -}
 array : Codec a -> Codec (Array a)
 array codec =
@@ -555,7 +552,7 @@ array codec =
             Array.toList
 
 
-{-| `Codec` between a sequence of bytes and an Elm `Dict`.
+{-| Codec for serializing a `Dict`
 -}
 dict : Codec comparable -> Codec a -> Codec (Dict comparable a)
 dict keyCodec valueCodec =
@@ -572,7 +569,7 @@ dict keyCodec valueCodec =
             Dict.toList
 
 
-{-| `Codec` between a sequence of bytes and an Elm `Set`.
+{-| Codec for serializing a `Set`
 -}
 set : Codec comparable -> Codec (Set comparable)
 set codec =
@@ -589,7 +586,7 @@ set codec =
             Set.toList
 
 
-{-| `Codec` between a sequence of bytes and an Elm `Tuple`.
+{-| Codec for serializing a tuple with 2 elements
 -}
 tuple : Codec a -> Codec b -> Codec ( a, b )
 tuple m1 m2 =
@@ -618,7 +615,7 @@ tuple m1 m2 =
         }
 
 
-{-| `Codec` between a sequence of bytes and an Elm triple.
+{-| Codec for serializing a tuple with 3 elements
 -}
 triple : Codec a -> Codec b -> Codec c -> Codec ( a, b, c )
 triple m1 m2 m3 =
@@ -652,7 +649,7 @@ triple m1 m2 m3 =
         }
 
 
-{-| `Codec` for `Result` values.
+{-| Codec for serializing a `Result`
 -}
 result : Codec error -> Codec value -> Codec (Result error value)
 result errorCodec valueCodec =
@@ -680,7 +677,8 @@ result errorCodec valueCodec =
             identity
 
 
-{-| `Codec` for `Bytes`. This is useful if you wanted to include binary data that you're going to decode elsewhere.
+{-| Codec for serializing `Bytes` from [elm/bytes](https://package.elm-lang.org/packages/elm/bytes/latest/).
+This is useful if you want to include binary data that you're going to decode elsewhere.
 
     pngCodec =
         Codec.bytes |> Codec.map pngEncoder pngDecoder
@@ -699,7 +697,8 @@ bytes =
         }
 
 
-{-| Store an integer ranging from 0 to 255. Useful if you have a small you want to encode and not use up a lot of space.
+{-| Codec for serializing an integer ranging from 0 to 255.
+This is useful if you have a small integer you want to serialize and not use up a lot of space.
 
     type alias Color =
         { red : Int
@@ -723,7 +722,7 @@ byte =
         }
 
 
-{-| A codec for an item from a list of possible items.
+{-| A codec for serializing an item from a list of possible items.
 If you try to encode an item that isn't in the list then the first item is defaulted to.
 
     type DaysOfWeek
@@ -800,7 +799,7 @@ findIndexHelp index predicate list_ =
 -- OBJECTS
 
 
-{-| A partially built `Codec` for an object.
+{-| A partially built Codec for a record.
 -}
 type RecordCodec a b
     = RecordCodec
@@ -810,8 +809,7 @@ type RecordCodec a b
         }
 
 
-{-| Start creating a `Codec` for an object. You should pass the constructor as the first parameter.
-If you don't have one (for example it's a simple type with no name), you should pass a function that given the field values builds an object.
+{-| Start creating a codec for a record.
 
     type alias Point =
         { x : Int
@@ -821,7 +819,7 @@ If you don't have one (for example it's a simple type with no name), you should 
     pointCodec : Codec Point
     pointCodec =
         Codec.object Point
-            -- Note that adding, removing, or reordering fields will prevent you from decoding existing data.
+            -- Note that adding, removing, or reordering fields will prevent you from decoding any data you've previously encoded.
             |> Codec.field .x Codec.signedInt
             |> Codec.field .y Codec.signedInt
             |> Codec.finishObject
@@ -836,7 +834,7 @@ record ctor =
         }
 
 
-{-| Specify how to get a value from the object we want to encode and then give a `Codec` for that value.
+{-| Add a field to the record we are creating a codec for.
 -}
 field : (a -> f) -> Codec f -> RecordCodec a (f -> b) -> RecordCodec a b
 field getter codec (RecordCodec ocodec) =
@@ -861,7 +859,7 @@ field getter codec (RecordCodec ocodec) =
         }
 
 
-{-| Create a `Codec` from a fully specified `ObjectCodec`.
+{-| Finish creating a codec for a record.
 -}
 finishRecord : RecordCodec a a -> Codec a
 finishRecord (RecordCodec om) =
@@ -875,7 +873,7 @@ finishRecord (RecordCodec om) =
 -- CUSTOM
 
 
-{-| A partially built `Codec` for a custom type.
+{-| A partially built codec for a custom type.
 -}
 type CustomTypeCodec match v
     = CustomTypeCodec
@@ -907,7 +905,7 @@ You need to pass a pattern matching function, see the FAQ for details.
                     Green ->
                         greenEncoder
             )
-            -- Note that removing a variant, inserting a variant before an existing one, or swapping two variants will prevent you from decoding existing data.
+            -- Note that removing a variant, inserting a variant before an existing one, or swapping two variants will prevent you from decoding any data you've previously encoded.
             |> Codec.variant3 Red Codec.signedInt Codec.string Codec.bool
             |> Codec.variant1 Yellow Codec.float64
             |> Codec.variant0 Green
@@ -1367,7 +1365,7 @@ variant8 ctor m1 m2 m3 m4 m5 m6 m7 m8 =
         )
 
 
-{-| Build a `Codec` for a fully specified custom type.
+{-| Finish creating a codec for a custom type.
 -}
 finishCustomType : CustomTypeCodec (a -> Encoder) a -> Codec a
 finishCustomType (CustomTypeCodec am) =
@@ -1386,7 +1384,15 @@ finishCustomType (CustomTypeCodec am) =
 ---- MAPPING
 
 
-{-| Transform a `Codec`.
+{-| Map from one codec to another codec
+
+    type UserId
+        = UserId Int
+
+    userIdCodec : Codec UserId
+    userIdCodec =
+        Codec.int |> Codec.map UserId (\(UserId id) -> id)
+
 -}
 map : (a -> b) -> (b -> a) -> Codec a -> Codec b
 map fromBytes_ toBytes_ codec =
@@ -1411,7 +1417,7 @@ map_ fromBytes_ toBytes_ codec =
         }
 
 
-{-| Transform a `Codec` in a way that can potentially fail when decoding.
+{-| Map from one codec to another codec in a way that can potentially fail when decoding.
 
     {-| Volume must be between 0 and 1.
     -}
