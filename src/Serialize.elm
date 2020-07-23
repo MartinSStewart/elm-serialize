@@ -83,6 +83,13 @@ type Codec e a
         }
 
 
+{-| Possible errors that can occur when decoding.
+
+  - `CustomError` - If you haven't made any breaking changes then this is the only error you should be able to get.
+  - `DataCorrupted` - This most likely will occur if you made breaking changes to your codec and try to decode old data. Have a look at `How do I change my data structures and still be able to decode data I've previously encoded?` in the readme if you're encountering this.
+  - `SerializerOutOfDate` - When encoding, this package will include version info. This makes it possible for me to make improvements to how data gets encoded without introducing breaking changes to your codecs. This error then, says that you're trying to decode data encoded with a newer version of elm-serialize.
+
+-}
 type Error e
     = CustomError e
     | DataCorrupted
@@ -149,6 +156,8 @@ decodeFromBytes codec bytes_ =
             Err DataCorrupted
 
 
+{-| Run a `Codec` to turn a String encoded with `encodeToString` into an Elm value.
+-}
 decodeFromString : Codec e a -> String -> Result (Error e) a
 decodeFromString codec base64 =
     case decode base64 of

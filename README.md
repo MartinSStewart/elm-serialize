@@ -4,8 +4,8 @@ Quickly and reliably write code to handle serialization of Elm data structures.
 This is done via `Codec`s which automatically create both the encoder and decoder ensuring that they don't get out of sync with eachother.
 
 ### What elm-serialize is good for?
-- Serializing data that you want to save to, and retrieve from, local storage
-- Communicating with a server that is also written in Elm
+- Sparing you from having to write lots of boilerplate encoders and decoders
+- Reliably encoding and decoding Elm types (no more failing to decode because you made a typo somewhere!)
 - Storing data in a reasonably space efficient format
     
 ### What elm-serialize is *not* good for?
@@ -18,26 +18,26 @@ This is done via `Codec`s which automatically create both the encoder and decode
 import Serialize as S
 
 type alias MeAndMyFriends = 
-    { name : String
-    , friends : List String
+    { me : String
+    , myFriends : List String
     }
 
-friendsCodec : S.Codec (List String)
+friendsCodec : S.Codec e (List String)
 friendsCodec =
     S.list S.string
     
-meAndMyFriendsCodec : S.Codec MeAndMyFriends
+meAndMyFriendsCodec : S.Codec e MeAndMyFriends
 meAndMyFriendsCodec =
     S.record Model 
-        |> S.field .name S.string
-        |> S.field .friends friendsCodec
+        |> S.field .me S.string
+        |> S.field .myFriends friendsCodec
         |> S.finishRecord
 
 encode : MeAndMyFriends -> Bytes
 encode meAndMyFriends =
     S.encodeToBytes meAndMyFriendsCodec meAndMyFriends
 
-decode : Bytes -> Result S.Error MeAndMyFriends
+decode : Bytes -> Result (S.Error e) MeAndMyFriends
 decode data =
     S.decodeFromBytes meAndMyFriendsCodec data
 ```
@@ -54,7 +54,7 @@ type Semaphore
 
 semaphoreCodec : S.Codec Semaphore
 semaphoreCodec =
-    S.custom
+    S.customType
         (\redEncoder yellowEncoder greenEncoder value ->
             case value of
                 Red i s b ->
@@ -67,19 +67,19 @@ semaphoreCodec =
                     greenEncoder
         )
         |> S.variant3 Red S.signedInt S.string S.bool
-        |> S.variant1 Yellow S.float64
+        |> S.variant1 Yellow S.float
         |> S.variant0 Green
-        |> S.finishCustom
+        |> S.finishCustomType
 ```
 
 ## How do I change my data structures and still be able to decode data I've previously encoded?
 
 First let's cover what counts as a breaking change for a Codec.
 
-For records, adding or removing Serialize.field is a breaking change. 
+For records, adding or removing Serialize.field is a breaking change.
 Changing the Codec used in a Serialize.field is also a breaking change.
 
-For custom types, removing a Serialize.variant is a breaking change. 
+For custom types, removing a Serialize.variant is a breaking change.
 Changing one of the Codecs used in a Serialize.variant or changing how many Codecs are used is a breaking change.
 
 Appending a Serialize.variant is *not* a breaking change.
@@ -170,21 +170,22 @@ import Serialize as S
 type alias GpsCoordinate =
     ( Float, Float )
 
+
 type GpsVersions
     = GpsV1 String -- Old naive way of storing GPS coordinates
     | GpsV2 GpsCoordinate -- New better way
 
-gpsV1Codec : S.Codec String
+gpsV1Codec : S.Codec e String
 gpsV1Codec =
     S.string
 
-gpsV2Codec : S.Codec GpsCoordinate
+gpsV2Codec : S.Codec e GpsCoordinate
 gpsV2Codec =
-    S.tuple S.float64 S.float64
+    S.tuple S.float S.float
 
-gpsCodec : S.Codec GpsCoordinate
+gpsCodec : S.Codec e GpsCoordinate
 gpsCodec =
-    S.custom
+    S.customType
         (\gpsV1Encoder gpsV2Encoder value ->
             case value of
                 GpsV1 text ->
@@ -196,7 +197,7 @@ gpsCodec =
         |> S.variant1 GpsV1 gpsV1Codec
         -- We append our new GPS codec. This is not a breaking change.
         |> S.variant1 GpsV2 gpsV2Codec
-        |> S.finishCustom
+        |> S.finishCustomType
         |> S.map
             (\value ->
                 case value of
@@ -205,29 +206,23 @@ gpsCodec =
                         convertGpsV1ToGpsCoordinate text
 
                     GpsV2 tuple ->
-                        tuple -- No conversion needed here
+                        -- No conversion needed here
+                        tuple
             )
             (\value -> GpsV2 value)
-            
+
+convertGpsV1ToGpsCoordinate : String -> (Float, Float)
 convertGpsV1ToGpsCoordinate =
     Debug.todo "Add the conversion code"
 ```
 If we decide to make more changes to our GPS coordinate, we can safely just append more variants to act as versions.
 The crucial thing is that we had this versioning system set up from the beginning. If we had just written 
 ```elm
-module AppCodec exposing (gpsCodec)
-
 gpsCodec : GpsCoordinate
 gpsCodec = S.string
 ``` 
 then we wouldn't be able to add a new version later.
 
-Okay, this system is pretty robust but it's also a lot of code to write. What else can we do?
-
-Here's a list of little tricks you can do to handle changing data structures
-
-- If you have a record and you want to remove a field from it, you can keep the Serialize.field 
-
 ## Credits
 
-This package is inspired by `miniBill/elm-codec`.
+This package is inspired by `miniBill/elm-codec` and is the next iteration of `MartinSStewart/elm-codec-bytes`.
