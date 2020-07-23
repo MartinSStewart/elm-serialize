@@ -10,7 +10,7 @@ This is done via `Codec`s which automatically create both the encoder and decode
     
 ### What elm-serialize is *not* good for?
 - Decoding data not encoded by elm-serialize
-- Generating data that is human readable
+- Encoding to a human readable format
 
 ## Basic usage
 

@@ -6,7 +6,7 @@ module Serialize exposing
     , maybe, list, array, dict, set, tuple, triple, result, enum
     , RecordCodec, record, field, finishRecord
     , CustomTypeCodec, customType, variant0, variant1, variant2, variant3, variant4, variant5, variant6, variant7, variant8, finishCustomType
-    , map, andThen
+    , map, mapValid, mapError
     , lazy
     )
 
@@ -50,7 +50,7 @@ module Serialize exposing
 
 # Mapping
 
-@docs map, andThen
+@docs map, mapValid, mapError
 
 
 # Fancy Codecs
@@ -65,7 +65,6 @@ import Bytes
 import Bytes.Decode as BD
 import Bytes.Encode as BE
 import Dict exposing (Dict)
-import Ordinal
 import Regex exposing (Regex)
 import Set exposing (Set)
 import Toop exposing (T4(..), T5(..), T6(..), T7(..), T8(..))
@@ -77,138 +76,22 @@ import Toop exposing (T4(..), T5(..), T6(..), T7(..), T8(..))
 
 {-| A value that knows how to encode and decode an Elm data structure.
 -}
-type Codec a
+type Codec e a
     = Codec
         { encoder : a -> Encoder
-        , decoder : Decoder (Result Error a)
+        , decoder : Decoder (Result (Error e) a)
         }
 
 
-type Error
-    = AndThenError { errorMessage : String }
-    | EnumNegativeIndex
-    | EnumValueNotFound
-    | CharError
-    | BoolError
-    | DictError
-    | SetError
-    | MaybeError
-    | ResultError
+type Error e
+    = CustomError e
     | DataCorrupted
-    | CustomTypeError { variantIndex : Int, variantSize : Int, variantConstructorIndex : Int, error : Error }
-    | NoCustomTypeVariantMatches
-    | RecordError { fieldIndex : Int, error : Error }
-    | ListError { listIndex : Int, error : Error }
-    | ArrayError { arrayIndex : Int, error : Error }
-    | TupleError { tupleIndex : Int, error : Error }
-    | TripleError { tripleIndex : Int, error : Error }
     | SerializerOutOfDate { dataVersion : Int }
 
 
 version : Int
 version =
     1
-
-
-errorToString : Error -> String
-errorToString errorData =
-    let
-        trace =
-            "An error occured" |> errorToString_ errorData
-
-        warning =
-            ""
-    in
-    trace ++ "\n\n\n" ++ warning
-
-
-errorToString_ : Error -> String -> String
-errorToString_ errorData previousText =
-    case errorData of
-        AndThenError { errorMessage } ->
-            previousText ++ "The Codec.andThen returned this error message:\n    " ++ errorMessage
-
-        DataCorrupted ->
-            previousText ++ "Data corrupted. This probably means you tried reading in data that wasn't compatible with this codec."
-
-        CustomTypeError { variantIndex, variantSize, variantConstructorIndex, error } ->
-            let
-                variantText =
-                    "|> variant"
-                        ++ String.fromInt variantSize
-                        ++ " _"
-                        ++ String.repeat variantConstructorIndex " _"
-                        ++ " error"
-                        ++ String.repeat (variantSize - 1 - variantConstructorIndex) " codec"
-            in
-            previousText
-                ++ " in a custom type codec, in the "
-                ++ Ordinal.ordinal (variantIndex + 1)
-                ++ " variant called. The line looks something like this:\n    "
-                ++ variantText
-                ++ "\n\n"
-                |> errorToString_ error
-
-        NoCustomTypeVariantMatches ->
-            previousText ++ " in a custom type codec. There wasn't any variants with the correct id. This might mean you've removed a variant and tried to decode data that needed that variant."
-
-        RecordError { fieldIndex, error } ->
-            previousText
-                ++ " in a record codec, in the "
-                ++ Ordinal.ordinal (fieldIndex + 1)
-                ++ " field\n\n"
-                |> errorToString_ error
-
-        ListError { listIndex, error } ->
-            previousText
-                ++ " in a list codec, in the "
-                ++ Ordinal.ordinal (listIndex + 1)
-                ++ " element\n\n"
-                |> errorToString_ error
-
-        TupleError { tupleIndex, error } ->
-            previousText
-                ++ " in a tuple codec, in the "
-                ++ Ordinal.ordinal (tupleIndex + 1)
-                ++ " element\n\n"
-                |> errorToString_ error
-
-        EnumNegativeIndex ->
-            previousText ++ "EnumNegativeIndex"
-
-        EnumValueNotFound ->
-            previousText ++ "EnumValueNotFound"
-
-        CharError ->
-            previousText ++ "CharError"
-
-        BoolError ->
-            previousText ++ "BoolError"
-
-        DictError ->
-            previousText
-
-        SetError ->
-            previousText
-
-        ArrayError { arrayIndex, error } ->
-            previousText
-
-        TripleError { tripleIndex, error } ->
-            previousText
-
-        MaybeError ->
-            previousText
-
-        ResultError ->
-            previousText
-
-        SerializerOutOfDate { dataVersion } ->
-            "This serialized data is version "
-                ++ String.fromInt dataVersion
-                ++ ". This package can only deserialize data from version "
-                ++ String.fromInt version
-                ++ " and lower. Maybe there's a more up to date package? If there isn't, this data is probably corrupted."
 
 
 {-| Describes how to generate a sequence of bytes.
@@ -234,14 +117,14 @@ endian =
 
 {-| Extracts the `Decoder` contained inside the `Codec`.
 -}
-getDecoder : Codec a -> Decoder (Result Error a)
+getDecoder : Codec e a -> Decoder (Result (Error e) a)
 getDecoder (Codec m) =
     m.decoder
 
 
 {-| Run a `Codec` to turn a sequence of bytes into an Elm value.
 -}
-decodeFromBytes : Codec a -> Bytes.Bytes -> Result Error a
+decodeFromBytes : Codec e a -> Bytes.Bytes -> Result (Error e) a
 decodeFromBytes codec bytes_ =
     let
         decoder =
@@ -266,7 +149,7 @@ decodeFromBytes codec bytes_ =
             Err DataCorrupted
 
 
-decodeFromString : Codec a -> String -> Result Error a
+decodeFromString : Codec e a -> String -> Result (Error e) a
 decodeFromString codec base64 =
     case decode base64 of
         Just bytes_ ->
@@ -319,14 +202,14 @@ replaceFromUrl =
 
 {-| Extracts the encoding function contained inside the `Codec`.
 -}
-getEncoder : Codec a -> a -> Encoder
+getEncoder : Codec e a -> a -> Encoder
 getEncoder (Codec m) =
     m.encoder
 
 
 {-| Convert an Elm value into a sequence of bytes.
 -}
-encodeToBytes : Codec a -> a -> Bytes.Bytes
+encodeToBytes : Codec e a -> a -> Bytes.Bytes
 encodeToBytes codec value =
     BE.sequence
         [ BE.unsignedInt8 version
@@ -345,7 +228,7 @@ encodeToBytes codec value =
 and not risk generating an invalid url.
 
 -}
-encodeToString : Codec a -> a -> String
+encodeToString : Codec e a -> a -> String
 encodeToString codec =
     encodeToBytes codec >> replaceBase64Chars
 
@@ -376,7 +259,7 @@ replaceForUrl =
 -- BASE
 
 
-build : (a -> Encoder) -> Decoder (Result Error a) -> Codec a
+build : (a -> Encoder) -> Decoder (Result (Error e) a) -> Codec e a
 build encoder_ decoder_ =
     Codec
         { encoder = encoder_
@@ -386,7 +269,7 @@ build encoder_ decoder_ =
 
 {-| Codec for serializing a `String`
 -}
-string : Codec String
+string : Codec e String
 string =
     build
         (\text ->
@@ -403,7 +286,7 @@ string =
 
 {-| Codec for serializing a `Bool`
 -}
-bool : Codec Bool
+bool : Codec e Bool
 bool =
     build
         (\value ->
@@ -424,28 +307,28 @@ bool =
                             Ok True
 
                         _ ->
-                            Err BoolError
+                            Err DataCorrupted
                 )
         )
 
 
 {-| Codec for serializing an `Int`
 -}
-int : Codec Int
+int : Codec e Int
 int =
     build (toFloat >> BE.float64 endian) (BD.float64 endian |> BD.map (round >> Ok))
 
 
 {-| Codec for serializing a `Float`
 -}
-float : Codec Float
+float : Codec e Float
 float =
     build (BE.float64 endian) (BD.float64 endian |> BD.map Ok)
 
 
 {-| Codec for serializing a `Char`
 -}
-char : Codec Char
+char : Codec e Char
 char =
     let
         charEncode text =
@@ -465,7 +348,7 @@ char =
                             Ok char_
 
                         Nothing ->
-                            Err CharError
+                            Err DataCorrupted
                 )
         )
 
@@ -483,7 +366,7 @@ char =
         S.Maybe S.Int
 
 -}
-maybe : Codec a -> Codec (Maybe a)
+maybe : Codec e a -> Codec e (Maybe a)
 maybe codec =
     customType
         (\nothingEncoder justEncoder value ->
@@ -503,8 +386,8 @@ maybe codec =
                     Ok ok ->
                         Ok ok
 
-                    Err _ ->
-                        Err MaybeError
+                    Err err ->
+                        Err err
             )
             identity
 
@@ -518,14 +401,14 @@ maybe codec =
         S.list S.string
 
 -}
-list : Codec a -> Codec (List a)
+list : Codec e a -> Codec e (List a)
 list codec =
     Codec
         { encoder = listEncode (getEncoder codec)
         , decoder =
             BD.unsignedInt32 endian
                 |> BD.andThen
-                    (\length -> BD.loop ( length, [] ) (listStep length (getDecoder codec)))
+                    (\length -> BD.loop ( length, [] ) (listStep (getDecoder codec)))
         }
 
 
@@ -537,8 +420,8 @@ listEncode encoder_ list_ =
         |> BE.sequence
 
 
-listStep : Int -> BD.Decoder (Result Error a) -> ( Int, List a ) -> Decoder (BD.Step ( Int, List a ) (Result Error (List a)))
-listStep length decoder_ ( n, xs ) =
+listStep : BD.Decoder (Result (Error e) a) -> ( Int, List a ) -> Decoder (BD.Step ( Int, List a ) (Result (Error e) (List a)))
+listStep decoder_ ( n, xs ) =
     if n <= 0 then
         BD.succeed (BD.Done (xs |> List.reverse |> Ok))
 
@@ -550,30 +433,16 @@ listStep length decoder_ ( n, xs ) =
                         BD.Loop ( n - 1, ok :: xs )
 
                     Err err ->
-                        BD.Done (ListError { listIndex = length - n, error = err } |> Err)
+                        BD.Done (Err err)
             )
             decoder_
 
 
 {-| Codec for serializing an `Array`
 -}
-array : Codec a -> Codec (Array a)
+array : Codec e a -> Codec e (Array a)
 array codec =
-    list codec
-        |> map_
-            (\value ->
-                case value of
-                    Ok ok ->
-                        Array.fromList ok |> Ok
-
-                    Err (ListError { listIndex, error }) ->
-                        ArrayError { arrayIndex = listIndex, error = error } |> Err
-
-                    Err _ ->
-                        -- This should never happen.
-                        Err DataCorrupted
-            )
-            Array.toList
+    list codec |> map_ (Result.map Array.fromList) Array.toList
 
 
 {-| Codec for serializing a `Dict`
@@ -588,36 +457,17 @@ array codec =
         S.dict S.string S.int
 
 -}
-dict : Codec comparable -> Codec a -> Codec (Dict comparable a)
+dict : Codec e comparable -> Codec e a -> Codec e (Dict comparable a)
 dict keyCodec valueCodec =
     list (tuple keyCodec valueCodec)
-        |> map_
-            (\value ->
-                case value of
-                    Ok ok ->
-                        Dict.fromList ok |> Ok
-
-                    Err _ ->
-                        Err SetError
-            )
-            Dict.toList
+        |> map_ (Result.map Dict.fromList) Dict.toList
 
 
 {-| Codec for serializing a `Set`
 -}
-set : Codec comparable -> Codec (Set comparable)
+set : Codec e comparable -> Codec e (Set comparable)
 set codec =
-    list codec
-        |> map_
-            (\value ->
-                case value of
-                    Ok ok ->
-                        Set.fromList ok |> Ok
-
-                    Err _ ->
-                        Err SetError
-            )
-            Set.toList
+    list codec |> map_ (Result.map Set.fromList) Set.toList
 
 
 {-| Codec for serializing a tuple with 2 elements
@@ -629,7 +479,7 @@ set codec =
         S.tuple S.float S.float
 
 -}
-tuple : Codec a -> Codec b -> Codec ( a, b )
+tuple : Codec e a -> Codec e b -> Codec e ( a, b )
 tuple m1 m2 =
     Codec
         { encoder =
@@ -645,11 +495,11 @@ tuple m1 m2 =
                         ( Ok aOk, Ok bOk ) ->
                             Ok ( aOk, bOk )
 
-                        ( Err error, _ ) ->
-                            TupleError { tupleIndex = 0, error = error } |> Err
+                        ( Err err, _ ) ->
+                            Err err
 
-                        ( _, Err error ) ->
-                            TupleError { tupleIndex = 1, error = error } |> Err
+                        ( _, Err err ) ->
+                            Err err
                 )
                 (getDecoder m1)
                 (getDecoder m2)
@@ -665,7 +515,7 @@ tuple m1 m2 =
         S.tuple S.float S.float S.float
 
 -}
-triple : Codec a -> Codec b -> Codec c -> Codec ( a, b, c )
+triple : Codec e a -> Codec e b -> Codec e c -> Codec e ( a, b, c )
 triple m1 m2 m3 =
     Codec
         { encoder =
@@ -682,14 +532,14 @@ triple m1 m2 m3 =
                         ( Ok aOk, Ok bOk, Ok cOk ) ->
                             Ok ( aOk, bOk, cOk )
 
-                        ( Err error, _, _ ) ->
-                            TripleError { tripleIndex = 0, error = error } |> Err
+                        ( Err err, _, _ ) ->
+                            Err err
 
-                        ( _, Err error, _ ) ->
-                            TripleError { tripleIndex = 1, error = error } |> Err
+                        ( _, Err err, _ ) ->
+                            Err err
 
-                        ( _, _, Err error ) ->
-                            TripleError { tripleIndex = 2, error = error } |> Err
+                        ( _, _, Err err ) ->
+                            Err err
                 )
                 (getDecoder m1)
                 (getDecoder m2)
@@ -699,7 +549,7 @@ triple m1 m2 m3 =
 
 {-| Codec for serializing a `Result`
 -}
-result : Codec error -> Codec value -> Codec (Result error value)
+result : Codec e error -> Codec e value -> Codec e (Result error value)
 result errorCodec valueCodec =
     customType
         (\errEncoder okEncoder value ->
@@ -720,13 +570,13 @@ result errorCodec valueCodec =
                         Ok ok
 
                     Err _ ->
-                        Err ResultError
+                        Err DataCorrupted
             )
             identity
 
 
 {-| Codec for serializing [`Bytes`](https://package.elm-lang.org/packages/elm/bytes/latest/).
-This is useful in combination with andThen to encode and decode external binary data formats.
+This is useful in combination with `mapValid` to encode and decode external binary data formats.
 
     import Image exposing (Image)
     import Serialize as S
@@ -734,12 +584,12 @@ This is useful in combination with andThen to encode and decode external binary 
     imageCodec : S.Codec Image
     imageCodec =
         S.bytes
-            |> S.andThen
+            |> S.mapValid
                 (Image.decode >> Result.fromMaybe (AndThenError { errorMessage = "Invalid png" }))
                 Image.toPng
 
 -}
-bytes : Codec Bytes.Bytes
+bytes : Codec e Bytes.Bytes
 bytes =
     Codec
         { encoder =
@@ -772,7 +622,7 @@ This is useful if you have a small integer you want to serialize and not use up 
             |> S.finishRecord
 
 -}
-byte : Codec Int
+byte : Codec e Int
 byte =
     Codec
         { encoder = BE.unsignedInt8
@@ -799,7 +649,7 @@ If you try to encode an item that isn't in the list then the first item is defau
         S.enum Monday [ Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday ]
 
 -}
-enum : a -> List a -> Codec a
+enum : a -> List a -> Codec e a
 enum defaultItem items =
     build
         (\value ->
@@ -813,10 +663,10 @@ enum defaultItem items =
             |> BD.map
                 (\index ->
                     if index < 0 then
-                        Err EnumNegativeIndex
+                        Err DataCorrupted
 
                     else if index > List.length items then
-                        Err EnumValueNotFound
+                        Err DataCorrupted
 
                     else
                         getAt (index - 1) items |> Maybe.withDefault defaultItem |> Ok
@@ -862,10 +712,10 @@ findIndexHelp index predicate list_ =
 
 {-| A partially built Codec for a record.
 -}
-type RecordCodec a b
+type RecordCodec e a b
     = RecordCodec
         { encoder : a -> List Encoder
-        , decoder : Decoder (Result Error b)
+        , decoder : Decoder (Result (Error e) b)
         , fieldCount : Int
         }
 
@@ -888,7 +738,7 @@ type RecordCodec a b
             |> S.finishObject
 
 -}
-record : b -> RecordCodec a b
+record : b -> RecordCodec e a b
 record ctor =
     RecordCodec
         { encoder = \_ -> []
@@ -899,7 +749,7 @@ record ctor =
 
 {-| Add a field to the record we are creating a codec for.
 -}
-field : (a -> f) -> Codec f -> RecordCodec a (f -> b) -> RecordCodec a b
+field : (a -> f) -> Codec e f -> RecordCodec e a (f -> b) -> RecordCodec e a b
 field getter codec (RecordCodec ocodec) =
     RecordCodec
         { encoder = \v -> (getEncoder codec <| getter v) :: ocodec.encoder v
@@ -910,11 +760,11 @@ field getter codec (RecordCodec ocodec) =
                         ( Ok fOk, Ok xOk ) ->
                             fOk xOk |> Ok
 
-                        ( Err fError, _ ) ->
-                            Err fError
+                        ( Err err, _ ) ->
+                            Err err
 
-                        ( _, Err xError ) ->
-                            RecordError { fieldIndex = ocodec.fieldCount, error = xError } |> Err
+                        ( _, Err err ) ->
+                            Err err
                 )
                 ocodec.decoder
                 (getDecoder codec)
@@ -924,7 +774,7 @@ field getter codec (RecordCodec ocodec) =
 
 {-| Finish creating a codec for a record.
 -}
-finishRecord : RecordCodec a a -> Codec a
+finishRecord : RecordCodec e a a -> Codec e a
 finishRecord (RecordCodec om) =
     Codec
         { encoder = om.encoder >> List.reverse >> BE.sequence
@@ -938,10 +788,10 @@ finishRecord (RecordCodec om) =
 
 {-| A partially built codec for a custom type.
 -}
-type CustomTypeCodec match v
+type CustomTypeCodec e match v
     = CustomTypeCodec
         { match : match
-        , decoder : Int -> Decoder (Result Error v) -> Decoder (Result Error v)
+        , decoder : Int -> Decoder (Result (Error e) v) -> Decoder (Result (Error e) v)
         , idCounter : Int
         }
 
@@ -978,7 +828,7 @@ You need to pass a pattern matching function, see the FAQ for details.
             |> S.finishCustom
 
 -}
-customType : match -> CustomTypeCodec match value
+customType : match -> CustomTypeCodec e match value
 customType match =
     CustomTypeCodec
         { match = match
@@ -989,9 +839,9 @@ customType match =
 
 variant :
     ((List Encoder -> Encoder) -> a)
-    -> (Int -> Decoder (Result Error v))
-    -> CustomTypeCodec (a -> b) v
-    -> CustomTypeCodec b v
+    -> Decoder (Result (Error e) v)
+    -> CustomTypeCodec e (a -> b) v
+    -> CustomTypeCodec e b v
 variant matchPiece decoderPiece (CustomTypeCodec am) =
     let
         enc v =
@@ -1001,7 +851,7 @@ variant matchPiece decoderPiece (CustomTypeCodec am) =
 
         decoder_ tag orElse =
             if tag == am.idCounter then
-                decoderPiece am.idCounter
+                decoderPiece
 
             else
                 am.decoder tag orElse
@@ -1015,24 +865,20 @@ variant matchPiece decoderPiece (CustomTypeCodec am) =
 
 {-| Define a variant with 0 parameters for a custom type.
 -}
-variant0 : v -> CustomTypeCodec (Encoder -> a) v -> CustomTypeCodec a v
+variant0 : v -> CustomTypeCodec e (Encoder -> a) v -> CustomTypeCodec e a v
 variant0 ctor =
     variant
         (\c -> c [])
-        (\_ -> BD.succeed (Ok ctor))
-
-
-variantError customIndex variantSize variantIndex error =
-    CustomTypeError { variantIndex = customIndex, variantSize = variantSize, variantConstructorIndex = variantIndex, error = error } |> Err
+        (BD.succeed (Ok ctor))
 
 
 {-| Define a variant with 1 parameters for a custom type.
 -}
 variant1 :
     (a -> v)
-    -> Codec a
-    -> CustomTypeCodec ((a -> Encoder) -> b) v
-    -> CustomTypeCodec b v
+    -> Codec e a
+    -> CustomTypeCodec e ((a -> Encoder) -> b) v
+    -> CustomTypeCodec e b v
 variant1 ctor m1 =
     variant
         (\c v ->
@@ -1040,17 +886,16 @@ variant1 ctor m1 =
                 [ getEncoder m1 v
                 ]
         )
-        (\index ->
-            BD.map
-                (\value ->
-                    case value of
-                        Ok ok ->
-                            ctor ok |> Ok
+        (BD.map
+            (\value ->
+                case value of
+                    Ok ok ->
+                        ctor ok |> Ok
 
-                        Err err ->
-                            variantError index 1 0 err
-                )
-                (getDecoder m1)
+                    Err err ->
+                        Err err
+            )
+            (getDecoder m1)
         )
 
 
@@ -1058,10 +903,10 @@ variant1 ctor m1 =
 -}
 variant2 :
     (a -> b -> v)
-    -> Codec a
-    -> Codec b
-    -> CustomTypeCodec ((a -> b -> Encoder) -> c) v
-    -> CustomTypeCodec c v
+    -> Codec e a
+    -> Codec e b
+    -> CustomTypeCodec e ((a -> b -> Encoder) -> c) v
+    -> CustomTypeCodec e c v
 variant2 ctor m1 m2 =
     variant
         (\c v1 v2 ->
@@ -1070,21 +915,20 @@ variant2 ctor m1 m2 =
                 , getEncoder m2 v2
                 ]
         )
-        (\index ->
-            BD.map2
-                (\v1 v2 ->
-                    case ( v1, v2 ) of
-                        ( Ok ok1, Ok ok2 ) ->
-                            ctor ok1 ok2 |> Ok
+        (BD.map2
+            (\v1 v2 ->
+                case ( v1, v2 ) of
+                    ( Ok ok1, Ok ok2 ) ->
+                        ctor ok1 ok2 |> Ok
 
-                        ( Err err, _ ) ->
-                            variantError index 2 0 err
+                    ( Err err, _ ) ->
+                        Err err
 
-                        ( _, Err err ) ->
-                            variantError index 2 1 err
-                )
-                (getDecoder m1)
-                (getDecoder m2)
+                    ( _, Err err ) ->
+                        Err err
+            )
+            (getDecoder m1)
+            (getDecoder m2)
         )
 
 
@@ -1092,11 +936,11 @@ variant2 ctor m1 m2 =
 -}
 variant3 :
     (a -> b -> c -> v)
-    -> Codec a
-    -> Codec b
-    -> Codec c
-    -> CustomTypeCodec ((a -> b -> c -> Encoder) -> partial) v
-    -> CustomTypeCodec partial v
+    -> Codec e a
+    -> Codec e b
+    -> Codec e c
+    -> CustomTypeCodec e ((a -> b -> c -> Encoder) -> partial) v
+    -> CustomTypeCodec e partial v
 variant3 ctor m1 m2 m3 =
     variant
         (\c v1 v2 v3 ->
@@ -1106,25 +950,24 @@ variant3 ctor m1 m2 m3 =
                 , getEncoder m3 v3
                 ]
         )
-        (\index ->
-            BD.map3
-                (\v1 v2 v3 ->
-                    case ( v1, v2, v3 ) of
-                        ( Ok ok1, Ok ok2, Ok ok3 ) ->
-                            ctor ok1 ok2 ok3 |> Ok
+        (BD.map3
+            (\v1 v2 v3 ->
+                case ( v1, v2, v3 ) of
+                    ( Ok ok1, Ok ok2, Ok ok3 ) ->
+                        ctor ok1 ok2 ok3 |> Ok
 
-                        ( Err err, _, _ ) ->
-                            variantError index 3 0 err
+                    ( Err err, _, _ ) ->
+                        Err err
 
-                        ( _, Err err, _ ) ->
-                            variantError index 3 1 err
+                    ( _, Err err, _ ) ->
+                        Err err
 
-                        ( _, _, Err err ) ->
-                            variantError index 3 2 err
-                )
-                (getDecoder m1)
-                (getDecoder m2)
-                (getDecoder m3)
+                    ( _, _, Err err ) ->
+                        Err err
+            )
+            (getDecoder m1)
+            (getDecoder m2)
+            (getDecoder m3)
         )
 
 
@@ -1132,12 +975,12 @@ variant3 ctor m1 m2 m3 =
 -}
 variant4 :
     (a -> b -> c -> d -> v)
-    -> Codec a
-    -> Codec b
-    -> Codec c
-    -> Codec d
-    -> CustomTypeCodec ((a -> b -> c -> d -> Encoder) -> partial) v
-    -> CustomTypeCodec partial v
+    -> Codec e a
+    -> Codec e b
+    -> Codec e c
+    -> Codec e d
+    -> CustomTypeCodec e ((a -> b -> c -> d -> Encoder) -> partial) v
+    -> CustomTypeCodec e partial v
 variant4 ctor m1 m2 m3 m4 =
     variant
         (\c v1 v2 v3 v4 ->
@@ -1148,29 +991,28 @@ variant4 ctor m1 m2 m3 m4 =
                 , getEncoder m4 v4
                 ]
         )
-        (\index ->
-            BD.map4
-                (\v1 v2 v3 v4 ->
-                    case T4 v1 v2 v3 v4 of
-                        T4 (Ok ok1) (Ok ok2) (Ok ok3) (Ok ok4) ->
-                            ctor ok1 ok2 ok3 ok4 |> Ok
+        (BD.map4
+            (\v1 v2 v3 v4 ->
+                case T4 v1 v2 v3 v4 of
+                    T4 (Ok ok1) (Ok ok2) (Ok ok3) (Ok ok4) ->
+                        ctor ok1 ok2 ok3 ok4 |> Ok
 
-                        T4 (Err err) _ _ _ ->
-                            variantError index 4 0 err
+                    T4 (Err err) _ _ _ ->
+                        Err err
 
-                        T4 _ (Err err) _ _ ->
-                            variantError index 4 1 err
+                    T4 _ (Err err) _ _ ->
+                        Err err
 
-                        T4 _ _ (Err err) _ ->
-                            variantError index 4 2 err
+                    T4 _ _ (Err err) _ ->
+                        Err err
 
-                        T4 _ _ _ (Err err) ->
-                            variantError index 4 3 err
-                )
-                (getDecoder m1)
-                (getDecoder m2)
-                (getDecoder m3)
-                (getDecoder m4)
+                    T4 _ _ _ (Err err) ->
+                        Err err
+            )
+            (getDecoder m1)
+            (getDecoder m2)
+            (getDecoder m3)
+            (getDecoder m4)
         )
 
 
@@ -1178,13 +1020,13 @@ variant4 ctor m1 m2 m3 m4 =
 -}
 variant5 :
     (a -> b -> c -> d -> e -> v)
-    -> Codec a
-    -> Codec b
-    -> Codec c
-    -> Codec d
-    -> Codec e
-    -> CustomTypeCodec ((a -> b -> c -> d -> e -> Encoder) -> partial) v
-    -> CustomTypeCodec partial v
+    -> Codec ee a
+    -> Codec ee b
+    -> Codec ee c
+    -> Codec ee d
+    -> Codec ee e
+    -> CustomTypeCodec ee ((a -> b -> c -> d -> e -> Encoder) -> partial) v
+    -> CustomTypeCodec ee partial v
 variant5 ctor m1 m2 m3 m4 m5 =
     variant
         (\c v1 v2 v3 v4 v5 ->
@@ -1196,33 +1038,32 @@ variant5 ctor m1 m2 m3 m4 m5 =
                 , getEncoder m5 v5
                 ]
         )
-        (\index ->
-            BD.map5
-                (\v1 v2 v3 v4 v5 ->
-                    case T5 v1 v2 v3 v4 v5 of
-                        T5 (Ok ok1) (Ok ok2) (Ok ok3) (Ok ok4) (Ok ok5) ->
-                            ctor ok1 ok2 ok3 ok4 ok5 |> Ok
+        (BD.map5
+            (\v1 v2 v3 v4 v5 ->
+                case T5 v1 v2 v3 v4 v5 of
+                    T5 (Ok ok1) (Ok ok2) (Ok ok3) (Ok ok4) (Ok ok5) ->
+                        ctor ok1 ok2 ok3 ok4 ok5 |> Ok
 
-                        T5 (Err err) _ _ _ _ ->
-                            variantError index 5 0 err
+                    T5 (Err err) _ _ _ _ ->
+                        Err err
 
-                        T5 _ (Err err) _ _ _ ->
-                            variantError index 5 1 err
+                    T5 _ (Err err) _ _ _ ->
+                        Err err
 
-                        T5 _ _ (Err err) _ _ ->
-                            variantError index 5 2 err
+                    T5 _ _ (Err err) _ _ ->
+                        Err err
 
-                        T5 _ _ _ (Err err) _ ->
-                            variantError index 5 3 err
+                    T5 _ _ _ (Err err) _ ->
+                        Err err
 
-                        T5 _ _ _ _ (Err err) ->
-                            variantError index 5 4 err
-                )
-                (getDecoder m1)
-                (getDecoder m2)
-                (getDecoder m3)
-                (getDecoder m4)
-                (getDecoder m5)
+                    T5 _ _ _ _ (Err err) ->
+                        Err err
+            )
+            (getDecoder m1)
+            (getDecoder m2)
+            (getDecoder m3)
+            (getDecoder m4)
+            (getDecoder m5)
         )
 
 
@@ -1230,14 +1071,14 @@ variant5 ctor m1 m2 m3 m4 m5 =
 -}
 variant6 :
     (a -> b -> c -> d -> e -> f -> v)
-    -> Codec a
-    -> Codec b
-    -> Codec c
-    -> Codec d
-    -> Codec e
-    -> Codec f
-    -> CustomTypeCodec ((a -> b -> c -> d -> e -> f -> Encoder) -> partial) v
-    -> CustomTypeCodec partial v
+    -> Codec ee a
+    -> Codec ee b
+    -> Codec ee c
+    -> Codec ee d
+    -> Codec ee e
+    -> Codec ee f
+    -> CustomTypeCodec ee ((a -> b -> c -> d -> e -> f -> Encoder) -> partial) v
+    -> CustomTypeCodec ee partial v
 variant6 ctor m1 m2 m3 m4 m5 m6 =
     variant
         (\c v1 v2 v3 v4 v5 v6 ->
@@ -1250,39 +1091,38 @@ variant6 ctor m1 m2 m3 m4 m5 m6 =
                 , getEncoder m6 v6
                 ]
         )
-        (\index ->
-            BD.map5
-                (\v1 v2 v3 v4 ( v5, v6 ) ->
-                    case T6 v1 v2 v3 v4 v5 v6 of
-                        T6 (Ok ok1) (Ok ok2) (Ok ok3) (Ok ok4) (Ok ok5) (Ok ok6) ->
-                            ctor ok1 ok2 ok3 ok4 ok5 ok6 |> Ok
+        (BD.map5
+            (\v1 v2 v3 v4 ( v5, v6 ) ->
+                case T6 v1 v2 v3 v4 v5 v6 of
+                    T6 (Ok ok1) (Ok ok2) (Ok ok3) (Ok ok4) (Ok ok5) (Ok ok6) ->
+                        ctor ok1 ok2 ok3 ok4 ok5 ok6 |> Ok
 
-                        T6 (Err err) _ _ _ _ _ ->
-                            variantError index 6 0 err
+                    T6 (Err err) _ _ _ _ _ ->
+                        Err err
 
-                        T6 _ (Err err) _ _ _ _ ->
-                            variantError index 6 1 err
+                    T6 _ (Err err) _ _ _ _ ->
+                        Err err
 
-                        T6 _ _ (Err err) _ _ _ ->
-                            variantError index 6 2 err
+                    T6 _ _ (Err err) _ _ _ ->
+                        Err err
 
-                        T6 _ _ _ (Err err) _ _ ->
-                            variantError index 6 3 err
+                    T6 _ _ _ (Err err) _ _ ->
+                        Err err
 
-                        T6 _ _ _ _ (Err err) _ ->
-                            variantError index 6 4 err
+                    T6 _ _ _ _ (Err err) _ ->
+                        Err err
 
-                        T6 _ _ _ _ _ (Err err) ->
-                            variantError index 6 5 err
-                )
-                (getDecoder m1)
-                (getDecoder m2)
-                (getDecoder m3)
-                (getDecoder m4)
-                (BD.map2 Tuple.pair
-                    (getDecoder m5)
-                    (getDecoder m6)
-                )
+                    T6 _ _ _ _ _ (Err err) ->
+                        Err err
+            )
+            (getDecoder m1)
+            (getDecoder m2)
+            (getDecoder m3)
+            (getDecoder m4)
+            (BD.map2 Tuple.pair
+                (getDecoder m5)
+                (getDecoder m6)
+            )
         )
 
 
@@ -1290,15 +1130,15 @@ variant6 ctor m1 m2 m3 m4 m5 m6 =
 -}
 variant7 :
     (a -> b -> c -> d -> e -> f -> g -> v)
-    -> Codec a
-    -> Codec b
-    -> Codec c
-    -> Codec d
-    -> Codec e
-    -> Codec f
-    -> Codec g
-    -> CustomTypeCodec ((a -> b -> c -> d -> e -> f -> g -> Encoder) -> partial) v
-    -> CustomTypeCodec partial v
+    -> Codec ee a
+    -> Codec ee b
+    -> Codec ee c
+    -> Codec ee d
+    -> Codec ee e
+    -> Codec ee f
+    -> Codec ee g
+    -> CustomTypeCodec ee ((a -> b -> c -> d -> e -> f -> g -> Encoder) -> partial) v
+    -> CustomTypeCodec ee partial v
 variant7 ctor m1 m2 m3 m4 m5 m6 m7 =
     variant
         (\c v1 v2 v3 v4 v5 v6 v7 ->
@@ -1312,45 +1152,44 @@ variant7 ctor m1 m2 m3 m4 m5 m6 m7 =
                 , getEncoder m7 v7
                 ]
         )
-        (\index ->
-            BD.map5
-                (\v1 v2 v3 ( v4, v5 ) ( v6, v7 ) ->
-                    case T7 v1 v2 v3 v4 v5 v6 v7 of
-                        T7 (Ok ok1) (Ok ok2) (Ok ok3) (Ok ok4) (Ok ok5) (Ok ok6) (Ok ok7) ->
-                            ctor ok1 ok2 ok3 ok4 ok5 ok6 ok7 |> Ok
+        (BD.map5
+            (\v1 v2 v3 ( v4, v5 ) ( v6, v7 ) ->
+                case T7 v1 v2 v3 v4 v5 v6 v7 of
+                    T7 (Ok ok1) (Ok ok2) (Ok ok3) (Ok ok4) (Ok ok5) (Ok ok6) (Ok ok7) ->
+                        ctor ok1 ok2 ok3 ok4 ok5 ok6 ok7 |> Ok
 
-                        T7 (Err err) _ _ _ _ _ _ ->
-                            variantError index 7 0 err
+                    T7 (Err err) _ _ _ _ _ _ ->
+                        Err err
 
-                        T7 _ (Err err) _ _ _ _ _ ->
-                            variantError index 7 1 err
+                    T7 _ (Err err) _ _ _ _ _ ->
+                        Err err
 
-                        T7 _ _ (Err err) _ _ _ _ ->
-                            variantError index 7 2 err
+                    T7 _ _ (Err err) _ _ _ _ ->
+                        Err err
 
-                        T7 _ _ _ (Err err) _ _ _ ->
-                            variantError index 7 3 err
+                    T7 _ _ _ (Err err) _ _ _ ->
+                        Err err
 
-                        T7 _ _ _ _ (Err err) _ _ ->
-                            variantError index 7 4 err
+                    T7 _ _ _ _ (Err err) _ _ ->
+                        Err err
 
-                        T7 _ _ _ _ _ (Err err) _ ->
-                            variantError index 7 5 err
+                    T7 _ _ _ _ _ (Err err) _ ->
+                        Err err
 
-                        T7 _ _ _ _ _ _ (Err err) ->
-                            variantError index 7 6 err
-                )
-                (getDecoder m1)
-                (getDecoder m2)
-                (getDecoder m3)
-                (BD.map2 Tuple.pair
-                    (getDecoder m4)
-                    (getDecoder m5)
-                )
-                (BD.map2 Tuple.pair
-                    (getDecoder m6)
-                    (getDecoder m7)
-                )
+                    T7 _ _ _ _ _ _ (Err err) ->
+                        Err err
+            )
+            (getDecoder m1)
+            (getDecoder m2)
+            (getDecoder m3)
+            (BD.map2 Tuple.pair
+                (getDecoder m4)
+                (getDecoder m5)
+            )
+            (BD.map2 Tuple.pair
+                (getDecoder m6)
+                (getDecoder m7)
+            )
         )
 
 
@@ -1358,16 +1197,16 @@ variant7 ctor m1 m2 m3 m4 m5 m6 m7 =
 -}
 variant8 :
     (a -> b -> c -> d -> e -> f -> g -> h -> v)
-    -> Codec a
-    -> Codec b
-    -> Codec c
-    -> Codec d
-    -> Codec e
-    -> Codec f
-    -> Codec g
-    -> Codec h
-    -> CustomTypeCodec ((a -> b -> c -> d -> e -> f -> g -> h -> Encoder) -> partial) v
-    -> CustomTypeCodec partial v
+    -> Codec ee a
+    -> Codec ee b
+    -> Codec ee c
+    -> Codec ee d
+    -> Codec ee e
+    -> Codec ee f
+    -> Codec ee g
+    -> Codec ee h
+    -> CustomTypeCodec ee ((a -> b -> c -> d -> e -> f -> g -> h -> Encoder) -> partial) v
+    -> CustomTypeCodec ee partial v
 variant8 ctor m1 m2 m3 m4 m5 m6 m7 m8 =
     variant
         (\c v1 v2 v3 v4 v5 v6 v7 v8 ->
@@ -1382,57 +1221,56 @@ variant8 ctor m1 m2 m3 m4 m5 m6 m7 m8 =
                 , getEncoder m8 v8
                 ]
         )
-        (\index ->
-            BD.map5
-                (\v1 v2 ( v3, v4 ) ( v5, v6 ) ( v7, v8 ) ->
-                    case T8 v1 v2 v3 v4 v5 v6 v7 v8 of
-                        T8 (Ok ok1) (Ok ok2) (Ok ok3) (Ok ok4) (Ok ok5) (Ok ok6) (Ok ok7) (Ok ok8) ->
-                            ctor ok1 ok2 ok3 ok4 ok5 ok6 ok7 ok8 |> Ok
+        (BD.map5
+            (\v1 v2 ( v3, v4 ) ( v5, v6 ) ( v7, v8 ) ->
+                case T8 v1 v2 v3 v4 v5 v6 v7 v8 of
+                    T8 (Ok ok1) (Ok ok2) (Ok ok3) (Ok ok4) (Ok ok5) (Ok ok6) (Ok ok7) (Ok ok8) ->
+                        ctor ok1 ok2 ok3 ok4 ok5 ok6 ok7 ok8 |> Ok
 
-                        T8 (Err err) _ _ _ _ _ _ _ ->
-                            variantError index 8 0 err
+                    T8 (Err err) _ _ _ _ _ _ _ ->
+                        Err err
 
-                        T8 _ (Err err) _ _ _ _ _ _ ->
-                            variantError index 8 1 err
+                    T8 _ (Err err) _ _ _ _ _ _ ->
+                        Err err
 
-                        T8 _ _ (Err err) _ _ _ _ _ ->
-                            variantError index 8 2 err
+                    T8 _ _ (Err err) _ _ _ _ _ ->
+                        Err err
 
-                        T8 _ _ _ (Err err) _ _ _ _ ->
-                            variantError index 8 3 err
+                    T8 _ _ _ (Err err) _ _ _ _ ->
+                        Err err
 
-                        T8 _ _ _ _ (Err err) _ _ _ ->
-                            variantError index 8 4 err
+                    T8 _ _ _ _ (Err err) _ _ _ ->
+                        Err err
 
-                        T8 _ _ _ _ _ (Err err) _ _ ->
-                            variantError index 8 5 err
+                    T8 _ _ _ _ _ (Err err) _ _ ->
+                        Err err
 
-                        T8 _ _ _ _ _ _ (Err err) _ ->
-                            variantError index 8 6 err
+                    T8 _ _ _ _ _ _ (Err err) _ ->
+                        Err err
 
-                        T8 _ _ _ _ _ _ _ (Err err) ->
-                            variantError index 8 7 err
-                )
-                (getDecoder m1)
-                (getDecoder m2)
-                (BD.map2 Tuple.pair
-                    (getDecoder m3)
-                    (getDecoder m4)
-                )
-                (BD.map2 Tuple.pair
-                    (getDecoder m5)
-                    (getDecoder m6)
-                )
-                (BD.map2 Tuple.pair
-                    (getDecoder m7)
-                    (getDecoder m8)
-                )
+                    T8 _ _ _ _ _ _ _ (Err err) ->
+                        Err err
+            )
+            (getDecoder m1)
+            (getDecoder m2)
+            (BD.map2 Tuple.pair
+                (getDecoder m3)
+                (getDecoder m4)
+            )
+            (BD.map2 Tuple.pair
+                (getDecoder m5)
+                (getDecoder m6)
+            )
+            (BD.map2 Tuple.pair
+                (getDecoder m7)
+                (getDecoder m8)
+            )
         )
 
 
 {-| Finish creating a codec for a custom type.
 -}
-finishCustomType : CustomTypeCodec (a -> Encoder) a -> Codec a
+finishCustomType : CustomTypeCodec e (a -> Encoder) a -> Codec e a
 finishCustomType (CustomTypeCodec am) =
     Codec
         { encoder = \v -> am.match v
@@ -1440,7 +1278,7 @@ finishCustomType (CustomTypeCodec am) =
             BD.unsignedInt16 endian
                 |> BD.andThen
                     (\tag ->
-                        am.decoder tag (BD.succeed (Err NoCustomTypeVariantMatches))
+                        am.decoder tag (BD.succeed (Err DataCorrupted))
                     )
         }
 
@@ -1461,7 +1299,7 @@ finishCustomType (CustomTypeCodec am) =
         S.int |> S.map UserId (\(UserId id) -> id)
 
 -}
-map : (a -> b) -> (b -> a) -> Codec a -> Codec b
+map : (a -> b) -> (b -> a) -> Codec e a -> Codec e b
 map fromBytes_ toBytes_ codec =
     map_
         (\value ->
@@ -1476,7 +1314,7 @@ map fromBytes_ toBytes_ codec =
         codec
 
 
-map_ : (Result Error a -> Result Error b) -> (b -> a) -> Codec a -> Codec b
+map_ : (Result (Error e) a -> Result (Error e) b) -> (b -> a) -> Codec e a -> Codec e b
 map_ fromBytes_ toBytes_ codec =
     Codec
         { decoder = getDecoder codec |> BD.map fromBytes_
@@ -1490,9 +1328,10 @@ map_ fromBytes_ toBytes_ codec =
 
     {-| Volume must be between 0 and 1.
     -}
+    volumeCodec : S.Codec String Float
     volumeCodec =
         S.float
-            |> S.andThen
+            |> S.mapValid
                 (\volume ->
                     if volume <= 1 && volume >= 0 then
                         Ok volume
@@ -1503,8 +1342,8 @@ map_ fromBytes_ toBytes_ codec =
                 (\volume -> volume)
 
 -}
-andThen : (a -> Result String b) -> (b -> a) -> Codec a -> Codec b
-andThen fromBytes_ toBytes_ codec =
+mapValid : (a -> Result e b) -> (b -> a) -> Codec e a -> Codec e b
+mapValid fromBytes_ toBytes_ codec =
     Codec
         { decoder =
             getDecoder codec
@@ -1512,12 +1351,37 @@ andThen fromBytes_ toBytes_ codec =
                     (\value ->
                         case value of
                             Ok ok ->
-                                fromBytes_ ok |> Result.mapError (\errorMessage -> AndThenError { errorMessage = errorMessage })
+                                fromBytes_ ok |> Result.mapError CustomError
 
                             Err err ->
                                 Err err
                     )
         , encoder = \v -> toBytes_ v |> getEncoder codec
+        }
+
+
+{-| Map errors generated by `mapValid`.
+-}
+mapError : (e1 -> e2) -> Codec e1 a -> Codec e2 a
+mapError mapFunc codec =
+    Codec
+        { encoder = getEncoder codec
+        , decoder =
+            getDecoder codec
+                |> BD.map
+                    (Result.mapError
+                        (\error ->
+                            case error of
+                                CustomError custom ->
+                                    mapFunc custom |> CustomError
+
+                                DataCorrupted ->
+                                    DataCorrupted
+
+                                SerializerOutOfDate a ->
+                                    SerializerOutOfDate a
+                        )
+                    )
         }
 
 
@@ -1544,8 +1408,11 @@ andThen fromBytes_ toBytes_ codec =
     goodPeanoCodec =
         S.maybe (S.lazy (\() -> goodPeanoCodec)) |> S.map Peano (\(Peano a) -> a)
 
+**Warning:** `lazy` is _not_ stack safe!
+If you have something like `Peano (Just (Peano Just (...)))` nested within itself sufficiently many times and you try to use `peanoCodec` on it, you'll get a stack overflow!
+
 -}
-lazy : (() -> Codec a) -> Codec a
+lazy : (() -> Codec e a) -> Codec e a
 lazy f =
     Codec
         { decoder = BD.succeed () |> BD.andThen (\() -> getDecoder (f ()))

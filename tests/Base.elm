@@ -4,11 +4,11 @@ import Basics.Extra
 import Bytes exposing (Bytes)
 import Bytes.Encode
 import Dict
-import Expect exposing (Expectation)
+import Expect
 import Fuzz exposing (Fuzzer)
 import Serialize as S exposing (Codec)
 import Set
-import Test exposing (Test, describe, fuzz, only, test)
+import Test exposing (Test, describe, fuzz, test)
 import Toop exposing (T1(..), T6(..))
 import Url
 
@@ -39,7 +39,7 @@ suite =
         ]
 
 
-roundtrips : Fuzzer a -> Codec a -> Test
+roundtrips : Fuzzer a -> Codec e a -> Test
 roundtrips fuzzer codec =
     fuzz fuzzer "is a roundtrip" <|
         \value ->
@@ -242,7 +242,7 @@ bimapTests =
 -}
 volumeCodec =
     S.float
-        |> S.andThen
+        |> S.mapValid
             (\volume ->
                 if volume <= 1 && volume >= 0 then
                     Ok volume
@@ -261,7 +261,7 @@ andThenTests =
             5
                 |> S.encodeToBytes volumeCodec
                 |> S.decodeFromBytes volumeCodec
-                |> Expect.equal (S.AndThenError { errorMessage = "Volume is outside of valid range." } |> Err)
+                |> Expect.equal (S.CustomError "Volume is outside of valid range." |> Err)
     ]
 
 
@@ -307,7 +307,7 @@ errorTests =
                         |> S.variant1 Just S.int
                         |> S.finishCustomType
             in
-            S.encodeToBytes codecBad (Just 0) |> S.decodeFromBytes codec |> Expect.equal (Err S.NoCustomTypeVariantMatches)
+            S.encodeToBytes codecBad (Just 0) |> S.decodeFromBytes codec |> Expect.equal (Err S.DataCorrupted)
     , test "list produces correct error message." <|
         \_ ->
             let
@@ -317,12 +317,7 @@ errorTests =
             S.encodeToBytes codec [ 0, 3, 0, 4, 0, 0 ]
                 |> S.decodeFromBytes codec
                 |> Expect.equal
-                    (S.ListError
-                        { listIndex = 1
-                        , error = S.AndThenError { errorMessage = "Volume is outside of valid range." }
-                        }
-                        |> Err
-                    )
+                    (Err <| S.CustomError "Volume is outside of valid range.")
     , test "Record produces correct error message." <|
         \_ ->
             let
@@ -337,12 +332,7 @@ errorTests =
             S.encodeToBytes codec { a = 0, b = -1, c = "", d = "" }
                 |> S.decodeFromBytes codec
                 |> Expect.equal
-                    (S.RecordError
-                        { fieldIndex = 1
-                        , error = S.AndThenError { errorMessage = "Volume is outside of valid range." }
-                        }
-                        |> Err
-                    )
+                    (Err <| S.CustomError "Volume is outside of valid range.")
     ]
 
 
@@ -352,7 +342,7 @@ type Peano
 
 {-| This is the same example used in Codec.recursive but adapted for lazy.
 -}
-peanoCodec : Codec Peano
+peanoCodec : Codec e Peano
 peanoCodec =
     S.maybe (S.lazy (\() -> peanoCodec)) |> S.map Peano (\(Peano a) -> a)
 
@@ -441,7 +431,7 @@ enumTest =
             S.encodeToBytes badDaysOfWeekCodec Tuesday |> S.decodeFromBytes badDaysOfWeekCodec |> Expect.equal (Ok Monday)
     , test "Error if enum index is greater than number of values in enum." <|
         \_ ->
-            S.encodeToBytes daysOfWeekCodec Tuesday |> S.decodeFromBytes badDaysOfWeekCodec |> Expect.equal (Err S.EnumValueNotFound)
+            S.encodeToBytes daysOfWeekCodec Tuesday |> S.decodeFromBytes badDaysOfWeekCodec |> Expect.equal (Err S.DataCorrupted)
     ]
 
 
