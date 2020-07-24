@@ -85,15 +85,15 @@ type Codec e a
 
 {-| Possible errors that can occur when decoding.
 
-  - `CustomError` - If you haven't made any breaking changes then this is the only error you should be able to get.
-  - `DataCorrupted` - This most likely will occur if you made breaking changes to your codec and try to decode old data. Have a look at `How do I change my data structures and still be able to decode data I've previously encoded?` in the readme if you're encountering this.
-  - `SerializerOutOfDate` - When encoding, this package will include version info. This makes it possible for me to make improvements to how data gets encoded without introducing breaking changes to your codecs. This error then, says that you're trying to decode data encoded with a newer version of elm-serialize.
+  - `CustomError` - An error caused by `andThen` returning an Err value.
+  - `DataCorrupted` - This most likely will occur if you made breaking changes to your codec and try to decode old data. Have a look at `How do I change my data structures and still be able to decode data I've previously encoded?` in the readme for how to avoid introducing breaking changes.
+  - `SerializerOutOfDate` - When encoding, this package will include a version number. This makes it possible for me to make improvements to how data gets encoded without introducing breaking changes to your codecs. This error then, says that you're trying to decode data encoded with a newer version of elm-serialize.
 
 -}
 type Error e
     = CustomError e
     | DataCorrupted
-    | SerializerOutOfDate { dataVersion : Int }
+    | SerializerOutOfDate
 
 
 version : Int
@@ -138,14 +138,14 @@ decodeFromBytes codec bytes_ =
             BD.unsignedInt8
                 |> BD.andThen
                     (\value ->
-                        if value == 0 then
+                        if value <= 0 then
                             Err DataCorrupted |> BD.succeed
 
                         else if value == version then
                             getDecoder codec
 
                         else
-                            Err (SerializerOutOfDate { dataVersion = value }) |> BD.succeed
+                            Err SerializerOutOfDate |> BD.succeed
                     )
     in
     case BD.decode decoder bytes_ of
@@ -1387,8 +1387,8 @@ mapError mapFunc codec =
                                 DataCorrupted ->
                                     DataCorrupted
 
-                                SerializerOutOfDate a ->
-                                    SerializerOutOfDate a
+                                SerializerOutOfDate ->
+                                    SerializerOutOfDate
                         )
                     )
         }
