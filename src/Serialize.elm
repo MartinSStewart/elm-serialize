@@ -376,7 +376,7 @@ char =
 
 -}
 maybe : Codec e a -> Codec e (Maybe a)
-maybe codec =
+maybe justCodec =
     customType
         (\nothingEncoder justEncoder value ->
             case value of
@@ -387,18 +387,8 @@ maybe codec =
                     justEncoder value_
         )
         |> variant0 Nothing
-        |> variant1 Just codec
+        |> variant1 Just justCodec
         |> finishCustomType
-        |> map_
-            (\value ->
-                case value of
-                    Ok ok ->
-                        Ok ok
-
-                    Err err ->
-                        Err err
-            )
-            identity
 
 
 {-| Codec for serializing a `List`
@@ -572,16 +562,6 @@ result errorCodec valueCodec =
         |> variant1 Err errorCodec
         |> variant1 Ok valueCodec
         |> finishCustomType
-        |> map_
-            (\value ->
-                case value of
-                    Ok ok ->
-                        Ok ok
-
-                    Err _ ->
-                        Err DataCorrupted
-            )
-            identity
 
 
 {-| Codec for serializing [`Bytes`](https://package.elm-lang.org/packages/elm/bytes/latest/).
@@ -797,7 +777,7 @@ finishRecord (RecordCodec om) =
 
 {-| A partially built codec for a custom type.
 -}
-type CustomTypeCodec e match v
+type CustomTypeCodec a e match v
     = CustomTypeCodec
         { match : match
         , decoder : Int -> Decoder (Result (Error e) v) -> Decoder (Result (Error e) v)
@@ -837,7 +817,7 @@ You need to pass a pattern matching function, see the FAQ for details.
             |> S.finishCustom
 
 -}
-customType : match -> CustomTypeCodec e match value
+customType : match -> CustomTypeCodec youNeedAtLeastOneVariant e match value
 customType match =
     CustomTypeCodec
         { match = match
@@ -849,8 +829,8 @@ customType match =
 variant :
     ((List Encoder -> Encoder) -> a)
     -> Decoder (Result (Error e) v)
-    -> CustomTypeCodec e (a -> b) v
-    -> CustomTypeCodec e b v
+    -> CustomTypeCodec z e (a -> b) v
+    -> CustomTypeCodec () e b v
 variant matchPiece decoderPiece (CustomTypeCodec am) =
     let
         enc v =
@@ -874,7 +854,7 @@ variant matchPiece decoderPiece (CustomTypeCodec am) =
 
 {-| Define a variant with 0 parameters for a custom type.
 -}
-variant0 : v -> CustomTypeCodec e (Encoder -> a) v -> CustomTypeCodec e a v
+variant0 : v -> CustomTypeCodec z e (Encoder -> a) v -> CustomTypeCodec () e a v
 variant0 ctor =
     variant
         (\c -> c [])
@@ -886,8 +866,8 @@ variant0 ctor =
 variant1 :
     (a -> v)
     -> Codec e a
-    -> CustomTypeCodec e ((a -> Encoder) -> b) v
-    -> CustomTypeCodec e b v
+    -> CustomTypeCodec z e ((a -> Encoder) -> b) v
+    -> CustomTypeCodec () e b v
 variant1 ctor m1 =
     variant
         (\c v ->
@@ -914,8 +894,8 @@ variant2 :
     (a -> b -> v)
     -> Codec e a
     -> Codec e b
-    -> CustomTypeCodec e ((a -> b -> Encoder) -> c) v
-    -> CustomTypeCodec e c v
+    -> CustomTypeCodec z e ((a -> b -> Encoder) -> c) v
+    -> CustomTypeCodec () e c v
 variant2 ctor m1 m2 =
     variant
         (\c v1 v2 ->
@@ -948,8 +928,8 @@ variant3 :
     -> Codec e a
     -> Codec e b
     -> Codec e c
-    -> CustomTypeCodec e ((a -> b -> c -> Encoder) -> partial) v
-    -> CustomTypeCodec e partial v
+    -> CustomTypeCodec z e ((a -> b -> c -> Encoder) -> partial) v
+    -> CustomTypeCodec () e partial v
 variant3 ctor m1 m2 m3 =
     variant
         (\c v1 v2 v3 ->
@@ -988,8 +968,8 @@ variant4 :
     -> Codec e b
     -> Codec e c
     -> Codec e d
-    -> CustomTypeCodec e ((a -> b -> c -> d -> Encoder) -> partial) v
-    -> CustomTypeCodec e partial v
+    -> CustomTypeCodec z e ((a -> b -> c -> d -> Encoder) -> partial) v
+    -> CustomTypeCodec () e partial v
 variant4 ctor m1 m2 m3 m4 =
     variant
         (\c v1 v2 v3 v4 ->
@@ -1034,8 +1014,8 @@ variant5 :
     -> Codec ee c
     -> Codec ee d
     -> Codec ee e
-    -> CustomTypeCodec ee ((a -> b -> c -> d -> e -> Encoder) -> partial) v
-    -> CustomTypeCodec ee partial v
+    -> CustomTypeCodec z ee ((a -> b -> c -> d -> e -> Encoder) -> partial) v
+    -> CustomTypeCodec () ee partial v
 variant5 ctor m1 m2 m3 m4 m5 =
     variant
         (\c v1 v2 v3 v4 v5 ->
@@ -1086,8 +1066,8 @@ variant6 :
     -> Codec ee d
     -> Codec ee e
     -> Codec ee f
-    -> CustomTypeCodec ee ((a -> b -> c -> d -> e -> f -> Encoder) -> partial) v
-    -> CustomTypeCodec ee partial v
+    -> CustomTypeCodec z ee ((a -> b -> c -> d -> e -> f -> Encoder) -> partial) v
+    -> CustomTypeCodec () ee partial v
 variant6 ctor m1 m2 m3 m4 m5 m6 =
     variant
         (\c v1 v2 v3 v4 v5 v6 ->
@@ -1146,8 +1126,8 @@ variant7 :
     -> Codec ee e
     -> Codec ee f
     -> Codec ee g
-    -> CustomTypeCodec ee ((a -> b -> c -> d -> e -> f -> g -> Encoder) -> partial) v
-    -> CustomTypeCodec ee partial v
+    -> CustomTypeCodec z ee ((a -> b -> c -> d -> e -> f -> g -> Encoder) -> partial) v
+    -> CustomTypeCodec () ee partial v
 variant7 ctor m1 m2 m3 m4 m5 m6 m7 =
     variant
         (\c v1 v2 v3 v4 v5 v6 v7 ->
@@ -1214,8 +1194,8 @@ variant8 :
     -> Codec ee f
     -> Codec ee g
     -> Codec ee h
-    -> CustomTypeCodec ee ((a -> b -> c -> d -> e -> f -> g -> h -> Encoder) -> partial) v
-    -> CustomTypeCodec ee partial v
+    -> CustomTypeCodec z ee ((a -> b -> c -> d -> e -> f -> g -> h -> Encoder) -> partial) v
+    -> CustomTypeCodec () ee partial v
 variant8 ctor m1 m2 m3 m4 m5 m6 m7 m8 =
     variant
         (\c v1 v2 v3 v4 v5 v6 v7 v8 ->
@@ -1279,7 +1259,7 @@ variant8 ctor m1 m2 m3 m4 m5 m6 m7 m8 =
 
 {-| Finish creating a codec for a custom type.
 -}
-finishCustomType : CustomTypeCodec e (a -> Encoder) a -> Codec e a
+finishCustomType : CustomTypeCodec () e (a -> Encoder) a -> Codec e a
 finishCustomType (CustomTypeCodec am) =
     Codec
         { encoder = \v -> am.match v
@@ -1333,22 +1313,25 @@ map_ fromBytes_ toBytes_ codec =
 
 {-| Map from one codec to another codec in a way that can potentially fail when decoding.
 
+    -- Email module is from https://package.elm-lang.org/packages/tricycle/elm-email/1.0.2/
+
+
+    import Email
     import Serialize as S
 
-    {-| Volume must be between 0 and 1.
-    -}
-    volumeCodec : S.Codec String Float
-    volumeCodec =
-        S.float
+    emailCodec : S.Codec String Float
+    emailCodec =
+        S.string
             |> S.mapValid
-                (\volume ->
-                    if volume <= 1 && volume >= 0 then
-                        Ok volume
+                (\text ->
+                    case Email.fromString of
+                        Just email ->
+                            Ok email
 
-                    else
-                        Err "Volume is outside of valid range."
+                        Nothing ->
+                            Err "Invalid email"
                 )
-                (\volume -> volume)
+                Email.toString
 
 -}
 mapValid : (a -> Result e b) -> (b -> a) -> Codec e a -> Codec e b

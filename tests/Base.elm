@@ -64,9 +64,10 @@ basicTests =
     , describe "Codec.bool"
         [ roundtrips Fuzz.bool S.bool
         ]
-    , describe "Codec.char"
-        [ roundtrips charFuzz S.char
-        ]
+
+    --, describe "Codec.char"
+    --    [ roundtrips charFuzz S.char
+    --    ]
     , describe "Codec.bytes"
         [ roundtrips fuzzBytes S.bytes
         ]
@@ -375,28 +376,12 @@ maybeTests =
     ]
 
 
+maybeFuzz : Fuzzer a -> Fuzzer b
 maybeFuzz fuzzer =
     Fuzz.oneOf
         [ Fuzz.constant Nothing
         , Fuzz.map Just fuzzer
         ]
-
-
-
---errorToStringTest : List Test
---errorToStringTest =
---    [ test "customTypeError" <|
---        \_ ->
---            let
---                expected =
---                    "An error occured in a custom type codec, in the 1st variant called. The line looks something like this (x marks the position of the parameter that failed to decode):\n"
---                        ++ "|> variant2 _ _ x\n\nwith this error message:\n    Something broke.\n\n\n"
---            in
---            { variantIndex = 0, variantSize = 2, variantConstructorIndex = 1, error = Codec.AndThenCodecError "Something broke." }
---                |> Codec.CustomTypeCodecError
---                |> Codec.errorToString
---                |> Expect.equal expected
---    ]
 
 
 type DaysOfWeek
@@ -453,5 +438,5 @@ serializerVersionTests =
             Bytes.Encode.sequence [ Bytes.Encode.unsignedInt8 version, Bytes.Encode.unsignedInt8 5 ]
                 |> Bytes.Encode.encode
                 |> S.decodeFromBytes S.byte
-                |> Expect.equal (S.SerializerOutOfDate { dataVersion = version } |> Err)
+                |> Expect.equal (Err S.SerializerOutOfDate)
     ]
