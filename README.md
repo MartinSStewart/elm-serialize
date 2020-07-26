@@ -4,12 +4,12 @@ Quickly and reliably write code to handle serialization of Elm data structures.
 This is done via `Codec`s which automatically create both the encoder and decoder ensuring that they don't get out of sync with eachother.
 
 ### What elm-serialize is good for?
-- Sparing you from having to write lots of boilerplate encoders and decoders
+- Sparing you from having to write both encoders and decoders
 - Reliably encoding and decoding Elm types (no more failing to decode because you made a typo somewhere!)
-- Storing data in a reasonably space efficient format
+- The data format is an implementation detail so you can use `encodeToBytes` for a space efficient binary format or `encodeToString` for a url safe, easy to transport format.
     
 ### What elm-serialize is *not* good for?
-- Decoding data not encoded by elm-serialize
+- Decoding external data formats
 - Encoding to a human readable format
 
 ## Basic usage
@@ -66,24 +66,43 @@ semaphoreCodec =
                 Green ->
                     greenEncoder
         )
-        |> S.variant3 Red S.signedInt S.string S.bool
+        |> S.variant3 Red S.int S.string S.bool
         |> S.variant1 Yellow S.float
         |> S.variant0 Green
         |> S.finishCustomType
 ```
 
+## Why isn't there a codec for `Char`?
+
+`Char` has problems https://github.com/elm/core/issues/1001
+
+There are a variety of unicode code points that get transformed into multiple code points when you change their casing, but Elm still treats these as `Char`.
+So if we made a codec for this we'd drop the extra code points and end up with something like this:
+```elm
+import Serialize as S
+
+Char.toUpper 'ß' --> 'SS'
+    |> S.encodeToBytes hypotheticalCharCodec
+    |> S.decodeFromBytes --> Ok 'S'
+    
+```
+
+So the short of it is, it's not possible to create a `Char` that won't sometimes mess up your data when decoding.
+
 ## How do I change my data structures and still be able to decode data I've previously encoded?
 
 First let's cover what counts as a breaking change for a Codec.
 
-For records, adding or removing Serialize.field is a breaking change.
-Changing the Codec used in a Serialize.field is also a breaking change.
+For records, adding or removing `field` is a breaking change.
+Changing the Codec used in a `field` is also a breaking change.
 
-For custom types, removing a Serialize.variant is a breaking change.
-Changing one of the Codecs used in a Serialize.variant or changing how many Codecs are used is a breaking change.
+For custom types, removing a `variant` is a breaking change.
+Changing one of the Codecs used in a `variant` or changing how many Codecs are used is a breaking change.
 
-Appending a Serialize.variant is *not* a breaking change.
+Appending a `variant` is *not* a breaking change.
 ```elm
+import Serialize as S
+
 -- We've enhanced the semaphore with a rainbow variant!
 type Semaphore
     = Red Int String Bool
@@ -106,8 +125,8 @@ S.custom
             Rainbow ->
                 rainbowEncoder
     )
-    |> S.variant3 Red S.signedInt S.string S.bool
-    |> S.variant1 Yellow S.float64
+    |> S.variant3 Red S.int S.string S.bool
+    |> S.variant1 Yellow S.float
     |> S.variant0 Green
     -- We can safely add the new variant here at the end.
     |> S.variant0 Rainbow
@@ -115,12 +134,12 @@ S.custom
 ```
 The example above will still decode anything encoded with the semaphoreCodec in the [custom types example](#Writing-codecs-for-custom-types)
 
-Knowing this, what we can do is have a custom type that lets us handle different versions of our Codec.
+Knowing this, what we can do is have a top level custom type that lets us handle different versions of our Codec.
 
-Here's an example of what that would look like.
+Suppose we are making an app that can serialize the users GPS coordinate.
+We are in a rush to get this app working so we just store GPS coordinates as a string.
 
-Suppose we are making an app that can serialize the users GPS coordinate. 
-We are in a rush to get this app working so we just store GPS coordinates as a string. 
+Here's an example of what that would look like:
 ```elm
 module AppCodec exposing (gpsCodec)
 
@@ -172,7 +191,7 @@ type alias GpsCoordinate =
 
 
 type GpsVersions
-    = GpsV1 String -- Old naive way of storing GPS coordinates
+    = GpsV1 String -- Old way of storing GPS coordinates
     | GpsV2 GpsCoordinate -- New better way
 
 gpsV1Codec : S.Codec e String
@@ -225,4 +244,4 @@ then we wouldn't be able to add a new version later.
 
 ## Credits
 
-This package is inspired by `miniBill/elm-codec` and is the next iteration of `MartinSStewart/elm-codec-bytes`.
+This package is inspired by `miniBill/elm-codec` and is an iteration on `MartinSStewart/elm-codec-bytes`.
