@@ -739,9 +739,9 @@ record ctor =
 {-| Add a field to the record we are creating a codec for.
 -}
 field : (a -> f) -> Codec e f -> RecordCodec e a (f -> b) -> RecordCodec e a b
-field getter codec (RecordCodec ocodec) =
+field getter codec (RecordCodec recordCodec) =
     RecordCodec
-        { encoder = \v -> (getEncoder codec <| getter v) :: ocodec.encoder v
+        { encoder = \v -> (getEncoder codec <| getter v) :: recordCodec.encoder v
         , decoder =
             BD.map2
                 (\f x ->
@@ -755,19 +755,19 @@ field getter codec (RecordCodec ocodec) =
                         ( _, Err err ) ->
                             Err err
                 )
-                ocodec.decoder
+                recordCodec.decoder
                 (getDecoder codec)
-        , fieldCount = ocodec.fieldCount + 1
+        , fieldCount = recordCodec.fieldCount + 1
         }
 
 
 {-| Finish creating a codec for a record.
 -}
 finishRecord : RecordCodec e a a -> Codec e a
-finishRecord (RecordCodec om) =
+finishRecord (RecordCodec codec) =
     Codec
-        { encoder = om.encoder >> List.reverse >> BE.sequence
-        , decoder = om.decoder
+        { encoder = codec.encoder >> List.reverse >> BE.sequence
+        , decoder = codec.decoder
         }
 
 
@@ -828,9 +828,9 @@ customType match =
 
 variant :
     ((List Encoder -> Encoder) -> a)
-    -> Decoder (Result (Error e) v)
-    -> CustomTypeCodec z e (a -> b) v
-    -> CustomTypeCodec () e b v
+    -> Decoder (Result (Error error) v)
+    -> CustomTypeCodec z error (a -> b) v
+    -> CustomTypeCodec () error b v
 variant matchPiece decoderPiece (CustomTypeCodec am) =
     let
         enc v =
@@ -865,9 +865,9 @@ variant0 ctor =
 -}
 variant1 :
     (a -> v)
-    -> Codec e a
-    -> CustomTypeCodec z e ((a -> Encoder) -> b) v
-    -> CustomTypeCodec () e b v
+    -> Codec error a
+    -> CustomTypeCodec z error ((a -> Encoder) -> b) v
+    -> CustomTypeCodec () error b v
 variant1 ctor m1 =
     variant
         (\c v ->
@@ -892,10 +892,10 @@ variant1 ctor m1 =
 -}
 variant2 :
     (a -> b -> v)
-    -> Codec e a
-    -> Codec e b
-    -> CustomTypeCodec z e ((a -> b -> Encoder) -> c) v
-    -> CustomTypeCodec () e c v
+    -> Codec error a
+    -> Codec error b
+    -> CustomTypeCodec z error ((a -> b -> Encoder) -> c) v
+    -> CustomTypeCodec () error c v
 variant2 ctor m1 m2 =
     variant
         (\c v1 v2 ->
@@ -925,11 +925,11 @@ variant2 ctor m1 m2 =
 -}
 variant3 :
     (a -> b -> c -> v)
-    -> Codec e a
-    -> Codec e b
-    -> Codec e c
-    -> CustomTypeCodec z e ((a -> b -> c -> Encoder) -> partial) v
-    -> CustomTypeCodec () e partial v
+    -> Codec error a
+    -> Codec error b
+    -> Codec error c
+    -> CustomTypeCodec z error ((a -> b -> c -> Encoder) -> partial) v
+    -> CustomTypeCodec () error partial v
 variant3 ctor m1 m2 m3 =
     variant
         (\c v1 v2 v3 ->
@@ -964,12 +964,12 @@ variant3 ctor m1 m2 m3 =
 -}
 variant4 :
     (a -> b -> c -> d -> v)
-    -> Codec e a
-    -> Codec e b
-    -> Codec e c
-    -> Codec e d
-    -> CustomTypeCodec z e ((a -> b -> c -> d -> Encoder) -> partial) v
-    -> CustomTypeCodec () e partial v
+    -> Codec error a
+    -> Codec error b
+    -> Codec error c
+    -> Codec error d
+    -> CustomTypeCodec z error ((a -> b -> c -> d -> Encoder) -> partial) v
+    -> CustomTypeCodec () error partial v
 variant4 ctor m1 m2 m3 m4 =
     variant
         (\c v1 v2 v3 v4 ->
@@ -1009,13 +1009,13 @@ variant4 ctor m1 m2 m3 m4 =
 -}
 variant5 :
     (a -> b -> c -> d -> e -> v)
-    -> Codec ee a
-    -> Codec ee b
-    -> Codec ee c
-    -> Codec ee d
-    -> Codec ee e
-    -> CustomTypeCodec z ee ((a -> b -> c -> d -> e -> Encoder) -> partial) v
-    -> CustomTypeCodec () ee partial v
+    -> Codec error a
+    -> Codec error b
+    -> Codec error c
+    -> Codec error d
+    -> Codec error e
+    -> CustomTypeCodec z error ((a -> b -> c -> d -> e -> Encoder) -> partial) v
+    -> CustomTypeCodec () error partial v
 variant5 ctor m1 m2 m3 m4 m5 =
     variant
         (\c v1 v2 v3 v4 v5 ->
@@ -1060,14 +1060,14 @@ variant5 ctor m1 m2 m3 m4 m5 =
 -}
 variant6 :
     (a -> b -> c -> d -> e -> f -> v)
-    -> Codec ee a
-    -> Codec ee b
-    -> Codec ee c
-    -> Codec ee d
-    -> Codec ee e
-    -> Codec ee f
-    -> CustomTypeCodec z ee ((a -> b -> c -> d -> e -> f -> Encoder) -> partial) v
-    -> CustomTypeCodec () ee partial v
+    -> Codec error a
+    -> Codec error b
+    -> Codec error c
+    -> Codec error d
+    -> Codec error e
+    -> Codec error f
+    -> CustomTypeCodec z error ((a -> b -> c -> d -> e -> f -> Encoder) -> partial) v
+    -> CustomTypeCodec () error partial v
 variant6 ctor m1 m2 m3 m4 m5 m6 =
     variant
         (\c v1 v2 v3 v4 v5 v6 ->
@@ -1119,15 +1119,15 @@ variant6 ctor m1 m2 m3 m4 m5 m6 =
 -}
 variant7 :
     (a -> b -> c -> d -> e -> f -> g -> v)
-    -> Codec ee a
-    -> Codec ee b
-    -> Codec ee c
-    -> Codec ee d
-    -> Codec ee e
-    -> Codec ee f
-    -> Codec ee g
-    -> CustomTypeCodec z ee ((a -> b -> c -> d -> e -> f -> g -> Encoder) -> partial) v
-    -> CustomTypeCodec () ee partial v
+    -> Codec error a
+    -> Codec error b
+    -> Codec error c
+    -> Codec error d
+    -> Codec error e
+    -> Codec error f
+    -> Codec error g
+    -> CustomTypeCodec z error ((a -> b -> c -> d -> e -> f -> g -> Encoder) -> partial) v
+    -> CustomTypeCodec () error partial v
 variant7 ctor m1 m2 m3 m4 m5 m6 m7 =
     variant
         (\c v1 v2 v3 v4 v5 v6 v7 ->
@@ -1186,16 +1186,16 @@ variant7 ctor m1 m2 m3 m4 m5 m6 m7 =
 -}
 variant8 :
     (a -> b -> c -> d -> e -> f -> g -> h -> v)
-    -> Codec ee a
-    -> Codec ee b
-    -> Codec ee c
-    -> Codec ee d
-    -> Codec ee e
-    -> Codec ee f
-    -> Codec ee g
-    -> Codec ee h
-    -> CustomTypeCodec z ee ((a -> b -> c -> d -> e -> f -> g -> h -> Encoder) -> partial) v
-    -> CustomTypeCodec () ee partial v
+    -> Codec error a
+    -> Codec error b
+    -> Codec error c
+    -> Codec error d
+    -> Codec error e
+    -> Codec error f
+    -> Codec error g
+    -> Codec error h
+    -> CustomTypeCodec z error ((a -> b -> c -> d -> e -> f -> g -> h -> Encoder) -> partial) v
+    -> CustomTypeCodec () error partial v
 variant8 ctor m1 m2 m3 m4 m5 m6 m7 m8 =
     variant
         (\c v1 v2 v3 v4 v5 v6 v7 v8 ->
