@@ -89,7 +89,7 @@ Char.toUpper 'ß' --> 'SS'
 
 So the short of it is, it's not possible to create a `Char` that won't sometimes mess up your data when decoding.
 
-## How do I change my data structures and still be able to decode data I've previously encoded?
+## How do I change my codecs and still be able to decode old data?
 
 First let's cover what counts as a breaking change for a Codec.
 
