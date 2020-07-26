@@ -53,7 +53,7 @@ module Serialize exposing
 @docs map, mapValid, mapError
 
 
-# Fancy Codecs
+# Stack unsafe
 
 @docs lazy
 
@@ -1395,7 +1395,7 @@ mapError mapFunc codec =
 
 
 
--- FANCY
+-- STACK UNSAFE
 
 
 {-| Handle situations where you need to define a codec in terms of itself.
