@@ -244,4 +244,4 @@ then we wouldn't be able to add a new version later.
 
 ## Credits
 
-This package is inspired by `miniBill/elm-codec` and is an iteration on `MartinSStewart/elm-codec-bytes`.
+This package is an iteration on `MartinSStewart/elm-codec-bytes` which is in turn inspired by `miniBill/elm-codec`.

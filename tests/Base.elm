@@ -249,7 +249,7 @@ volumeCodec =
                     Ok volume
 
                 else
-                    Err "Volume is outside of valid range."
+                    Err ("Volume is outside of valid range. Value: " ++ String.fromFloat volume)
             )
             (\volume -> volume)
 
@@ -262,7 +262,7 @@ andThenTests =
             5
                 |> S.encodeToBytes volumeCodec
                 |> S.decodeFromBytes volumeCodec
-                |> Expect.equal (S.CustomError "Volume is outside of valid range." |> Err)
+                |> Expect.equal (S.CustomError "Volume is outside of valid range. Value: 5" |> Err)
     ]
 
 
@@ -270,7 +270,7 @@ type alias Record =
     { a : Int
     , b : Float
     , c : String
-    , d : String
+    , d : Float
     }
 
 
@@ -318,7 +318,7 @@ errorTests =
             S.encodeToBytes codec [ 0, 3, 0, 4, 0, 0 ]
                 |> S.decodeFromBytes codec
                 |> Expect.equal
-                    (Err <| S.CustomError "Volume is outside of valid range.")
+                    (Err <| S.CustomError "Volume is outside of valid range. Value: 3")
     , test "Record produces correct error message." <|
         \_ ->
             let
@@ -327,13 +327,28 @@ errorTests =
                         |> S.field .a S.int
                         |> S.field .b volumeCodec
                         |> S.field .c S.string
-                        |> S.field .d S.string
+                        |> S.field .d volumeCodec
                         |> S.finishRecord
             in
-            S.encodeToBytes codec { a = 0, b = -1, c = "", d = "" }
+            S.encodeToBytes codec { a = 0, b = 0, c = "", d = -1 }
                 |> S.decodeFromBytes codec
                 |> Expect.equal
-                    (Err <| S.CustomError "Volume is outside of valid range.")
+                    (Err <| S.CustomError "Volume is outside of valid range. Value: -1")
+    , test "Record produces first error message." <|
+        \_ ->
+            let
+                codec =
+                    S.record Record
+                        |> S.field .a S.int
+                        |> S.field .b volumeCodec
+                        |> S.field .c S.string
+                        |> S.field .d volumeCodec
+                        |> S.finishRecord
+            in
+            S.encodeToBytes codec { a = 0, b = -2, c = "", d = -3 }
+                |> S.decodeFromBytes codec
+                |> Expect.equal
+                    (Err <| S.CustomError "Volume is outside of valid range. Value: -2")
     ]
 
 
@@ -376,7 +391,7 @@ maybeTests =
     ]
 
 
-maybeFuzz : Fuzzer a -> Fuzzer b
+maybeFuzz : Fuzzer a -> Fuzzer (Maybe a)
 maybeFuzz fuzzer =
     Fuzz.oneOf
         [ Fuzz.constant Nothing

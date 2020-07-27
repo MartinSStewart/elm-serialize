@@ -479,30 +479,11 @@ set codec =
 
 -}
 tuple : Codec e a -> Codec e b -> Codec e ( a, b )
-tuple m1 m2 =
-    Codec
-        { encoder =
-            \( v1, v2 ) ->
-                BE.sequence
-                    [ getEncoder m1 v1
-                    , getEncoder m2 v2
-                    ]
-        , decoder =
-            BD.map2
-                (\a b ->
-                    case ( a, b ) of
-                        ( Ok aOk, Ok bOk ) ->
-                            Ok ( aOk, bOk )
-
-                        ( Err err, _ ) ->
-                            Err err
-
-                        ( _, Err err ) ->
-                            Err err
-                )
-                (getDecoder m1)
-                (getDecoder m2)
-        }
+tuple codecFirst codecSecond =
+    record Tuple.pair
+        |> field Tuple.first codecFirst
+        |> field Tuple.second codecSecond
+        |> finishRecord
 
 
 {-| Codec for serializing a tuple with 3 elements
@@ -515,35 +496,12 @@ tuple m1 m2 =
 
 -}
 triple : Codec e a -> Codec e b -> Codec e c -> Codec e ( a, b, c )
-triple m1 m2 m3 =
-    Codec
-        { encoder =
-            \( v1, v2, v3 ) ->
-                BE.sequence
-                    [ getEncoder m1 v1
-                    , getEncoder m2 v2
-                    , getEncoder m3 v3
-                    ]
-        , decoder =
-            BD.map3
-                (\a b c ->
-                    case ( a, b, c ) of
-                        ( Ok aOk, Ok bOk, Ok cOk ) ->
-                            Ok ( aOk, bOk, cOk )
-
-                        ( Err err, _, _ ) ->
-                            Err err
-
-                        ( _, Err err, _ ) ->
-                            Err err
-
-                        ( _, _, Err err ) ->
-                            Err err
-                )
-                (getDecoder m1)
-                (getDecoder m2)
-                (getDecoder m3)
-        }
+triple codecFirst codecSecond codecThird =
+    record (\a b c -> ( a, b, c ))
+        |> field (\( a, _, _ ) -> a) codecFirst
+        |> field (\( _, b, _ ) -> b) codecSecond
+        |> field (\( _, _, c ) -> c) codecThird
+        |> finishRecord
 
 
 {-| Codec for serializing a `Result`
