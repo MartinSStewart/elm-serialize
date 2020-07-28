@@ -30,7 +30,7 @@ module Serialize exposing
 
 # Primitives
 
-@docs string, bool, char, float, int, bytes, byte
+@docs string, bool, float, int, bytes, byte
 
 
 # Data Structures
@@ -86,8 +86,12 @@ type Codec e a
 {-| Possible errors that can occur when decoding.
 
   - `CustomError` - An error caused by `andThen` returning an Err value.
-  - `DataCorrupted` - This most likely will occur if you made breaking changes to your codec and try to decode old data. Have a look at `How do I change my data structures and still be able to decode data I've previously encoded?` in the readme for how to avoid introducing breaking changes.
+  - `DataCorrupted` - This most likely will occur if you make breaking changes to your codec and try to decode old data\*. Have a look at `How do I change my codecs and still be able to decode old data?` in the readme for how to avoid introducing breaking changes.
   - `SerializerOutOfDate` - When encoding, this package will include a version number. This makes it possible for me to make improvements to how data gets encoded without introducing breaking changes to your codecs. This error then, says that you're trying to decode data encoded with a newer version of elm-serialize.
+
+\*It's possible for corrupted data to still succeed in decoding (but with nonsense Elm values).
+This is because internally we're just encoding Elm values and not storing any kind of structural information.
+So if you encoded an Int and then a Float, and then tried decoding it as a Float and then an Int, there's no way for the decoder to know it read the data in the wrong order.
 
 -}
 type Error e
@@ -299,11 +303,12 @@ bool : Codec e Bool
 bool =
     build
         (\value ->
-            if value then
-                BE.unsignedInt8 1
+            case value of
+                True ->
+                    BE.unsignedInt8 1
 
-            else
-                BE.unsignedInt8 0
+                False ->
+                    BE.unsignedInt8 0
         )
         (BD.unsignedInt8
             |> BD.map
@@ -441,7 +446,7 @@ listStep decoder_ ( n, xs ) =
 -}
 array : Codec e a -> Codec e (Array a)
 array codec =
-    list codec |> map_ (Result.map Array.fromList) Array.toList
+    list codec |> mapHelper (Result.map Array.fromList) Array.toList
 
 
 {-| Codec for serializing a `Dict`
@@ -459,14 +464,14 @@ array codec =
 dict : Codec e comparable -> Codec e a -> Codec e (Dict comparable a)
 dict keyCodec valueCodec =
     list (tuple keyCodec valueCodec)
-        |> map_ (Result.map Dict.fromList) Dict.toList
+        |> mapHelper (Result.map Dict.fromList) Dict.toList
 
 
 {-| Codec for serializing a `Set`
 -}
 set : Codec e comparable -> Codec e (Set comparable)
 set codec =
-    list codec |> map_ (Result.map Set.fromList) Set.toList
+    list codec |> mapHelper (Result.map Set.fromList) Set.toList
 
 
 {-| Codec for serializing a tuple with 2 elements
@@ -1248,7 +1253,7 @@ finishCustomType (CustomTypeCodec am) =
 -}
 map : (a -> b) -> (b -> a) -> Codec e a -> Codec e b
 map fromBytes_ toBytes_ codec =
-    map_
+    mapHelper
         (\value ->
             case value of
                 Ok ok ->
@@ -1261,8 +1266,8 @@ map fromBytes_ toBytes_ codec =
         codec
 
 
-map_ : (Result (Error e) a -> Result (Error e) b) -> (b -> a) -> Codec e a -> Codec e b
-map_ fromBytes_ toBytes_ codec =
+mapHelper : (Result (Error e) a -> Result (Error e) b) -> (b -> a) -> Codec e a -> Codec e b
+mapHelper fromBytes_ toBytes_ codec =
     Codec
         { decoder = getDecoder codec |> BD.map fromBytes_
         , encoder = \v -> toBytes_ v |> getEncoder codec
