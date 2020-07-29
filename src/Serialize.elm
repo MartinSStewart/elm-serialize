@@ -5,7 +5,7 @@ module Serialize exposing
     , string, bool, float, int, bytes, byte
     , maybe, list, array, dict, set, tuple, triple, result, enum
     , RecordCodec, record, field, finishRecord
-    , CustomTypeCodec, customType, variant0, variant1, variant2, variant3, variant4, variant5, variant6, variant7, variant8, finishCustomType
+    , CustomTypeCodec, customType, variant0, variant1, variant2, variant3, variant4, variant5, variant6, variant7, variant8, finishCustomType, VariantEncoder
     , map, mapValid, mapError
     , lazy
     )
@@ -45,7 +45,7 @@ module Serialize exposing
 
 # Custom Types
 
-@docs CustomTypeCodec, customType, variant0, variant1, variant2, variant3, variant4, variant5, variant6, variant7, variant8, finishCustomType
+@docs CustomTypeCodec, customType, variant0, variant1, variant2, variant3, variant4, variant5, variant6, variant7, variant8, finishCustomType, VariantEncoder
 
 
 # Mapping
@@ -78,7 +78,7 @@ import Toop exposing (T4(..), T5(..), T6(..), T7(..), T8(..))
 -}
 type Codec e a
     = Codec
-        { encoder : a -> Encoder
+        { encoder : a -> BE.Encoder
         , decoder : Decoder (Result (Error e) a)
         }
 
@@ -103,12 +103,6 @@ type Error e
 version : Int
 version =
     1
-
-
-{-| Describes how to generate a sequence of bytes.
--}
-type alias Encoder =
-    BE.Encoder
 
 
 
@@ -215,7 +209,7 @@ replaceFromUrl =
 
 {-| Extracts the encoding function contained inside the `Codec`.
 -}
-getEncoder : Codec e a -> a -> Encoder
+getEncoder : Codec e a -> a -> BE.Encoder
 getEncoder (Codec m) =
     m.encoder
 
@@ -272,7 +266,7 @@ replaceForUrl =
 -- BASE
 
 
-build : (a -> Encoder) -> Decoder (Result (Error e) a) -> Codec e a
+build : (a -> BE.Encoder) -> Decoder (Result (Error e) a) -> Codec e a
 build encoder_ decoder_ =
     Codec
         { encoder = encoder_
@@ -416,7 +410,7 @@ list codec =
         }
 
 
-listEncode : (a -> Encoder) -> List a -> Encoder
+listEncode : (a -> BE.Encoder) -> List a -> BE.Encoder
 listEncode encoder_ list_ =
     list_
         |> List.map encoder_
@@ -666,7 +660,7 @@ findIndexHelp index predicate list_ =
 -}
 type RecordCodec e a b
     = RecordCodec
-        { encoder : a -> List Encoder
+        { encoder : a -> List BE.Encoder
         , decoder : Decoder (Result (Error e) b)
         , fieldCount : Int
         }
@@ -789,8 +783,13 @@ customType match =
         }
 
 
+{-| -}
+type VariantEncoder
+    = VariantEncoder BE.Encoder
+
+
 variant :
-    ((List Encoder -> Encoder) -> a)
+    ((List VariantEncoder -> VariantEncoder) -> a)
     -> Decoder (Result (Error error) v)
     -> CustomTypeCodec z error (a -> b) v
     -> CustomTypeCodec () error b v
@@ -798,8 +797,9 @@ variant matchPiece decoderPiece (CustomTypeCodec am) =
     let
         enc v =
             BE.unsignedInt16 endian am.idCounter
-                :: v
+                :: List.map (\(VariantEncoder a) -> a) v
                 |> BE.sequence
+                |> VariantEncoder
 
         decoder_ tag orElse =
             if tag == am.idCounter then
@@ -817,7 +817,7 @@ variant matchPiece decoderPiece (CustomTypeCodec am) =
 
 {-| Define a variant with 0 parameters for a custom type.
 -}
-variant0 : v -> CustomTypeCodec z e (Encoder -> a) v -> CustomTypeCodec () e a v
+variant0 : v -> CustomTypeCodec z e (VariantEncoder -> a) v -> CustomTypeCodec () e a v
 variant0 ctor =
     variant
         (\c -> c [])
@@ -829,13 +829,13 @@ variant0 ctor =
 variant1 :
     (a -> v)
     -> Codec error a
-    -> CustomTypeCodec z error ((a -> Encoder) -> b) v
+    -> CustomTypeCodec z error ((a -> VariantEncoder) -> b) v
     -> CustomTypeCodec () error b v
 variant1 ctor m1 =
     variant
         (\c v ->
             c
-                [ getEncoder m1 v
+                [ getEncoder m1 v |> VariantEncoder
                 ]
         )
         (BD.map
@@ -857,15 +857,16 @@ variant2 :
     (a -> b -> v)
     -> Codec error a
     -> Codec error b
-    -> CustomTypeCodec z error ((a -> b -> Encoder) -> c) v
+    -> CustomTypeCodec z error ((a -> b -> VariantEncoder) -> c) v
     -> CustomTypeCodec () error c v
 variant2 ctor m1 m2 =
     variant
         (\c v1 v2 ->
-            c
-                [ getEncoder m1 v1
-                , getEncoder m2 v2
-                ]
+            [ getEncoder m1 v1
+            , getEncoder m2 v2
+            ]
+                |> List.map VariantEncoder
+                |> c
         )
         (BD.map2
             (\v1 v2 ->
@@ -891,16 +892,17 @@ variant3 :
     -> Codec error a
     -> Codec error b
     -> Codec error c
-    -> CustomTypeCodec z error ((a -> b -> c -> Encoder) -> partial) v
+    -> CustomTypeCodec z error ((a -> b -> c -> VariantEncoder) -> partial) v
     -> CustomTypeCodec () error partial v
 variant3 ctor m1 m2 m3 =
     variant
         (\c v1 v2 v3 ->
-            c
-                [ getEncoder m1 v1
-                , getEncoder m2 v2
-                , getEncoder m3 v3
-                ]
+            [ getEncoder m1 v1
+            , getEncoder m2 v2
+            , getEncoder m3 v3
+            ]
+                |> List.map VariantEncoder
+                |> c
         )
         (BD.map3
             (\v1 v2 v3 ->
@@ -931,17 +933,18 @@ variant4 :
     -> Codec error b
     -> Codec error c
     -> Codec error d
-    -> CustomTypeCodec z error ((a -> b -> c -> d -> Encoder) -> partial) v
+    -> CustomTypeCodec z error ((a -> b -> c -> d -> VariantEncoder) -> partial) v
     -> CustomTypeCodec () error partial v
 variant4 ctor m1 m2 m3 m4 =
     variant
         (\c v1 v2 v3 v4 ->
-            c
-                [ getEncoder m1 v1
-                , getEncoder m2 v2
-                , getEncoder m3 v3
-                , getEncoder m4 v4
-                ]
+            [ getEncoder m1 v1
+            , getEncoder m2 v2
+            , getEncoder m3 v3
+            , getEncoder m4 v4
+            ]
+                |> List.map VariantEncoder
+                |> c
         )
         (BD.map4
             (\v1 v2 v3 v4 ->
@@ -977,18 +980,19 @@ variant5 :
     -> Codec error c
     -> Codec error d
     -> Codec error e
-    -> CustomTypeCodec z error ((a -> b -> c -> d -> e -> Encoder) -> partial) v
+    -> CustomTypeCodec z error ((a -> b -> c -> d -> e -> VariantEncoder) -> partial) v
     -> CustomTypeCodec () error partial v
 variant5 ctor m1 m2 m3 m4 m5 =
     variant
         (\c v1 v2 v3 v4 v5 ->
-            c
-                [ getEncoder m1 v1
-                , getEncoder m2 v2
-                , getEncoder m3 v3
-                , getEncoder m4 v4
-                , getEncoder m5 v5
-                ]
+            [ getEncoder m1 v1
+            , getEncoder m2 v2
+            , getEncoder m3 v3
+            , getEncoder m4 v4
+            , getEncoder m5 v5
+            ]
+                |> List.map VariantEncoder
+                |> c
         )
         (BD.map5
             (\v1 v2 v3 v4 v5 ->
@@ -1029,19 +1033,20 @@ variant6 :
     -> Codec error d
     -> Codec error e
     -> Codec error f
-    -> CustomTypeCodec z error ((a -> b -> c -> d -> e -> f -> Encoder) -> partial) v
+    -> CustomTypeCodec z error ((a -> b -> c -> d -> e -> f -> VariantEncoder) -> partial) v
     -> CustomTypeCodec () error partial v
 variant6 ctor m1 m2 m3 m4 m5 m6 =
     variant
         (\c v1 v2 v3 v4 v5 v6 ->
-            c
-                [ getEncoder m1 v1
-                , getEncoder m2 v2
-                , getEncoder m3 v3
-                , getEncoder m4 v4
-                , getEncoder m5 v5
-                , getEncoder m6 v6
-                ]
+            [ getEncoder m1 v1
+            , getEncoder m2 v2
+            , getEncoder m3 v3
+            , getEncoder m4 v4
+            , getEncoder m5 v5
+            , getEncoder m6 v6
+            ]
+                |> List.map VariantEncoder
+                |> c
         )
         (BD.map5
             (\v1 v2 v3 v4 ( v5, v6 ) ->
@@ -1089,20 +1094,21 @@ variant7 :
     -> Codec error e
     -> Codec error f
     -> Codec error g
-    -> CustomTypeCodec z error ((a -> b -> c -> d -> e -> f -> g -> Encoder) -> partial) v
+    -> CustomTypeCodec z error ((a -> b -> c -> d -> e -> f -> g -> VariantEncoder) -> partial) v
     -> CustomTypeCodec () error partial v
 variant7 ctor m1 m2 m3 m4 m5 m6 m7 =
     variant
         (\c v1 v2 v3 v4 v5 v6 v7 ->
-            c
-                [ getEncoder m1 v1
-                , getEncoder m2 v2
-                , getEncoder m3 v3
-                , getEncoder m4 v4
-                , getEncoder m5 v5
-                , getEncoder m6 v6
-                , getEncoder m7 v7
-                ]
+            [ getEncoder m1 v1
+            , getEncoder m2 v2
+            , getEncoder m3 v3
+            , getEncoder m4 v4
+            , getEncoder m5 v5
+            , getEncoder m6 v6
+            , getEncoder m7 v7
+            ]
+                |> List.map VariantEncoder
+                |> c
         )
         (BD.map5
             (\v1 v2 v3 ( v4, v5 ) ( v6, v7 ) ->
@@ -1157,21 +1163,22 @@ variant8 :
     -> Codec error f
     -> Codec error g
     -> Codec error h
-    -> CustomTypeCodec z error ((a -> b -> c -> d -> e -> f -> g -> h -> Encoder) -> partial) v
+    -> CustomTypeCodec z error ((a -> b -> c -> d -> e -> f -> g -> h -> VariantEncoder) -> partial) v
     -> CustomTypeCodec () error partial v
 variant8 ctor m1 m2 m3 m4 m5 m6 m7 m8 =
     variant
         (\c v1 v2 v3 v4 v5 v6 v7 v8 ->
-            c
-                [ getEncoder m1 v1
-                , getEncoder m2 v2
-                , getEncoder m3 v3
-                , getEncoder m4 v4
-                , getEncoder m5 v5
-                , getEncoder m6 v6
-                , getEncoder m7 v7
-                , getEncoder m8 v8
-                ]
+            [ getEncoder m1 v1
+            , getEncoder m2 v2
+            , getEncoder m3 v3
+            , getEncoder m4 v4
+            , getEncoder m5 v5
+            , getEncoder m6 v6
+            , getEncoder m7 v7
+            , getEncoder m8 v8
+            ]
+                |> List.map VariantEncoder
+                |> c
         )
         (BD.map5
             (\v1 v2 ( v3, v4 ) ( v5, v6 ) ( v7, v8 ) ->
@@ -1222,10 +1229,10 @@ variant8 ctor m1 m2 m3 m4 m5 m6 m7 m8 =
 
 {-| Finish creating a codec for a custom type.
 -}
-finishCustomType : CustomTypeCodec () e (a -> Encoder) a -> Codec e a
+finishCustomType : CustomTypeCodec () e (a -> VariantEncoder) a -> Codec e a
 finishCustomType (CustomTypeCodec am) =
     Codec
-        { encoder = \v -> am.match v
+        { encoder = \v -> am.match v |> (\(VariantEncoder a) -> a)
         , decoder =
             BD.unsignedInt16 endian
                 |> BD.andThen
@@ -1249,6 +1256,10 @@ finishCustomType (CustomTypeCodec am) =
     userIdCodec : S.Codec UserId
     userIdCodec =
         S.int |> S.map UserId (\(UserId id) -> id)
+
+Note that there's nothing preventing you from encoding Elm values that will map to some different value when you decode them.
+I recommend writing tests for Codecs that use `map` to make sure you get back the same Elm value you put in.
+[Here's some helper functions to get you started.](https://github.com/MartinSStewart/elm-geometry-serialize/blob/6f2244c28631ede1b864cb43541d1573dc628904/tests/Tests.elm#L49-L74)
 
 -}
 map : (a -> b) -> (b -> a) -> Codec e a -> Codec e b
@@ -1295,6 +1306,10 @@ mapHelper fromBytes_ toBytes_ codec =
                             Err "Invalid email"
                 )
                 Email.toString
+
+Note that there's nothing preventing you from encoding Elm values that will produce Err when you decode them.
+I recommend writing tests for Codecs that use `mapValid` to make sure you get back the same Elm value you put in.
+[Here's some helper functions to get you started.](https://github.com/MartinSStewart/elm-geometry-serialize/blob/6f2244c28631ede1b864cb43541d1573dc628904/tests/Tests.elm#L49-L74)
 
 -}
 mapValid : (a -> Result e b) -> (b -> a) -> Codec e a -> Codec e b
