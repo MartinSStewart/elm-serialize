@@ -677,11 +677,11 @@ type RecordCodec e a b
 
     pointCodec : S.Codec Point
     pointCodec =
-        S.object Point
+        S.record Point
             -- Note that adding, removing, or reordering fields will prevent you from decoding any data you've previously encoded.
             |> S.field .x S.int
             |> S.field .y S.int
-            |> S.finishObject
+            |> S.finishRecord
 
 -}
 record : b -> RecordCodec e a b
