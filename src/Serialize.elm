@@ -780,7 +780,7 @@ You need to pass a pattern matching function, see the FAQ for details.
             |> S.finishCustom
 
 -}
-customType : match -> CustomTypeCodec youNeedAtLeastOneVariant e match value
+customType : match -> CustomTypeCodec { youNeedAtLeastOneVariant : () } e match value
 customType match =
     CustomTypeCodec
         { match = match
