@@ -55,6 +55,7 @@ basicTests =
     [ describe "Codec.string"
         [ roundtrips Fuzz.string S.string
         ]
+    , describe "Codec.string with unicode chars" [ roundtrips (Fuzz.constant "Ⓐ弈😀") S.string ]
     , describe "Codec.int"
         [ roundtrips maxRangeIntFuzz S.int
         ]
