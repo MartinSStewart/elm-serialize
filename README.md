@@ -245,3 +245,5 @@ then we wouldn't be able to add a new version later.
 ## Credits
 
 This package is an iteration on `MartinSStewart/elm-codec-bytes` which is in turn inspired by `miniBill/elm-codec`.
+
+Also thanks to [jfmengels](https://github.com/jfmengels) and [drathier](https://github.com/drathier) for providing lots of feedback!

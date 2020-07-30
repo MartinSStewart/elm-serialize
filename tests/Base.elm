@@ -349,6 +349,22 @@ errorTests =
                 |> S.decodeFromBytes codec
                 |> Expect.equal
                     (Err <| S.CustomError "Volume is outside of valid range. Value: -2")
+    , test "Map error message." <|
+        \_ ->
+            let
+                codec =
+                    S.record Record
+                        |> S.field .a S.int
+                        |> S.field .b volumeCodec
+                        |> S.field .c S.string
+                        |> S.field .d volumeCodec
+                        |> S.finishRecord
+                        |> S.mapError (\text -> "Error in Record: " ++ text)
+            in
+            S.encodeToBytes codec { a = 0, b = -2, c = "", d = -3 }
+                |> S.decodeFromBytes codec
+                |> Expect.equal
+                    (Err <| S.CustomError "Error in Record: Volume is outside of valid range. Value: -2")
     ]
 
 

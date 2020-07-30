@@ -1378,8 +1378,11 @@ mapError mapFunc codec =
     goodPeanoCodec =
         S.maybe (S.lazy (\() -> goodPeanoCodec)) |> S.map Peano (\(Peano a) -> a)
 
-**Warning:** `lazy` is _not_ stack safe!
-If you have something like `Peano (Just (Peano Just (...)))` nested within itself sufficiently many times and you try to use `peanoCodec` on it, you'll get a stack overflow!
+**Warning:** This is not stack safe.
+
+In general if you have a type that contains itself, like with our the Peano example, then you're at risk of a stack overflow while decoding.
+Even if you're translating your nested data into a list before encoding, you're at risk, because the function translating back after decoding can cause a stack overflow if the original value was nested deeply enough.
+Be careful here, and test your codecs using elm-test with larger inputs than you ever expect to see in real life.
 
 -}
 lazy : (() -> Codec e a) -> Codec e a
