@@ -132,7 +132,7 @@ S.custom
     |> S.variant0 Rainbow
     |> S.finishCustom
 ```
-The example above will still decode anything encoded with the semaphoreCodec in the [custom types example](#Writing-codecs-for-custom-types)
+The example above will still decode anything encoded with the semaphoreCodec in the [custom types example](#writing-codecs-for-custom-types)
 
 Knowing this, what we can do is have a top level custom type that lets us handle different versions of our Codec.
 
@@ -141,11 +141,9 @@ We are in a rush to get this app working so we just store GPS coordinates as a s
 
 Here's an example of what that would look like:
 ```elm
-module AppCodec exposing (gpsCodec)
-
 import Serialize as S
 
-{-| The gps coordinate we use internally in our application
+{-| The gps coordinate used internally in our application
 -}
 type alias GpsCoordinate =
     String
@@ -177,14 +175,12 @@ gpsCodec =
 ```
 
 Then a while later we start refactoring the app. Internally we replace all those GPS strings with `(Float, Float)`.
-We still want to decode all the serialized data though so we change our AppCodec module to look like this:
+We still want to decode all the serialized data though so we change our module to look like this:
 
 ```elm
-module AppCodec exposing (gpsCodec)
-
 import Serialize as S
 
-{-| The gps coordinate we use internally in our application
+{-| The gps coordinate used internally in our application
 -}
 type alias GpsCoordinate =
     ( Float, Float )

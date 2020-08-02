@@ -271,7 +271,8 @@ type alias Record =
     { a : Int
     , b : Float
     , c : String
-    , d : Float
+    , d : ()
+    , e : Float
     }
 
 
@@ -328,10 +329,11 @@ errorTests =
                         |> S.field .a S.int
                         |> S.field .b volumeCodec
                         |> S.field .c S.string
-                        |> S.field .d volumeCodec
+                        |> S.field .d S.unit
+                        |> S.field .e volumeCodec
                         |> S.finishRecord
             in
-            S.encodeToBytes codec { a = 0, b = 0, c = "", d = -1 }
+            S.encodeToBytes codec { a = 0, b = 0, c = "", d = (), e = -1 }
                 |> S.decodeFromBytes codec
                 |> Expect.equal
                     (Err <| S.CustomError "Volume is outside of valid range. Value: -1")
@@ -343,10 +345,11 @@ errorTests =
                         |> S.field .a S.int
                         |> S.field .b volumeCodec
                         |> S.field .c S.string
-                        |> S.field .d volumeCodec
+                        |> S.field .d S.unit
+                        |> S.field .e volumeCodec
                         |> S.finishRecord
             in
-            S.encodeToBytes codec { a = 0, b = -2, c = "", d = -3 }
+            S.encodeToBytes codec { a = 0, b = -2, c = "", d = (), e = -3 }
                 |> S.decodeFromBytes codec
                 |> Expect.equal
                     (Err <| S.CustomError "Volume is outside of valid range. Value: -2")
@@ -358,11 +361,12 @@ errorTests =
                         |> S.field .a S.int
                         |> S.field .b volumeCodec
                         |> S.field .c S.string
-                        |> S.field .d volumeCodec
+                        |> S.field .d S.unit
+                        |> S.field .e volumeCodec
                         |> S.finishRecord
                         |> S.mapError (\text -> "Error in Record: " ++ text)
             in
-            S.encodeToBytes codec { a = 0, b = -2, c = "", d = -3 }
+            S.encodeToBytes codec { a = 0, b = -2, c = "", d = (), e = -3 }
                 |> S.decodeFromBytes codec
                 |> Expect.equal
                     (Err <| S.CustomError "Error in Record: Volume is outside of valid range. Value: -2")

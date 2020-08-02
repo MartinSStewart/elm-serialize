@@ -2,7 +2,7 @@ module Serialize exposing
     ( Codec, Error(..)
     , decodeFromBytes, decodeFromString
     , encodeToBytes, encodeToString
-    , string, bool, float, int, bytes, byte
+    , string, bool, float, int, unit, bytes, byte
     , maybe, list, array, dict, set, tuple, triple, result, enum
     , RecordCodec, record, field, finishRecord
     , CustomTypeCodec, customType, variant0, variant1, variant2, variant3, variant4, variant5, variant6, variant7, variant8, finishCustomType, VariantEncoder
@@ -30,7 +30,7 @@ module Serialize exposing
 
 # Primitives
 
-@docs string, bool, float, int, bytes, byte
+@docs string, bool, float, int, unit, bytes, byte
 
 
 # Data Structures
@@ -466,6 +466,16 @@ dict keyCodec valueCodec =
 set : Codec e comparable -> Codec e (Set comparable)
 set codec =
     list codec |> mapHelper (Result.map Set.fromList) Set.toList
+
+
+{-| Codec for serializing `()` (aka `Unit`).
+Since the Unit type only has one possible value, we don't need to encode anything in order to represent it.
+-}
+unit : Codec e ()
+unit =
+    build
+        (always (BE.sequence []))
+        (BD.succeed (Ok ()))
 
 
 {-| Codec for serializing a tuple with 2 elements
