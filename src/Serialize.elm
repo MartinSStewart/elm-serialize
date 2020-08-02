@@ -532,16 +532,16 @@ result errorCodec valueCodec =
 
 
 {-| Codec for serializing [`Bytes`](https://package.elm-lang.org/packages/elm/bytes/latest/).
-This is useful in combination with `mapValid` to encode and decode external binary data formats.
+This is useful in combination with `mapValid` for encoding and decoding data using some specialized format.
 
     import Image exposing (Image)
     import Serialize as S
 
-    imageCodec : S.Codec Image
+    imageCodec : S.Codec String Image
     imageCodec =
         S.bytes
             |> S.mapValid
-                (Image.decode >> Result.fromMaybe (AndThenError { errorMessage = "Invalid png" }))
+                (Image.decode >> Result.fromMaybe "Failed to decode PNG image.")
                 Image.toPng
 
 -}
