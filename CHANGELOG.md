@@ -11,4 +11,4 @@
 ## 1.1.0
 
 * Added Codec for `()` (aka `Unit`)
-* Fixed some mistakes in README.md
+* Fixed mistakes in documentation
