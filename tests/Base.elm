@@ -9,7 +9,7 @@ import Fuzz exposing (Fuzzer)
 import Serialize as S exposing (Codec)
 import Set
 import Test exposing (Test, describe, fuzz, test)
-import Toop exposing (T1(..), T6(..))
+import Toop exposing (T1(..), T2(..), T3(..), T4(..), T5(..), T6(..), T7(..), T8(..))
 import Url
 
 
@@ -36,21 +36,23 @@ suite =
                 in
                 expected |> Url.percentEncode |> Expect.equal expected
         , describe "Serizlier version" serializerVersionTests
-        , Test.only <|
-            Test.fuzz Fuzz.float "Json round trip float" <|
-                \value -> String.fromFloat value |> String.toFloat |> Expect.equal (Just value)
+        , Test.fuzz Fuzz.float "Json round trip float" <|
+            \value -> String.fromFloat value |> String.toFloat |> Expect.equal (Just value)
         ]
 
 
 roundtrips : Fuzzer a -> Codec e a -> Test
 roundtrips fuzzer codec =
-    fuzz fuzzer "is a roundtrip" <|
-        \value ->
-            Expect.all
-                [ S.encodeToBytes codec >> S.decodeFromBytes codec >> Expect.equal (Ok value)
-                , S.encodeToString codec >> S.decodeFromString codec >> Expect.equal (Ok value)
-                ]
-                value
+    fuzz fuzzer "is a roundtrip" (roundtripHelper codec)
+
+
+roundtripHelper codec value =
+    Expect.all
+        [ S.encodeToBytes codec >> S.decodeFromBytes codec >> Expect.equal (Ok value)
+        , S.encodeToString codec >> S.decodeFromString codec >> Expect.equal (Ok value)
+        , S.encodeToJson codec >> S.decodeFromJson codec >> Expect.equal (Ok value)
+        ]
+        value
 
 
 basicTests : List Test
@@ -78,6 +80,8 @@ basicTests =
     , describe "Codec.byte"
         [ roundtrips (Fuzz.intRange 0 255) S.byte
         ]
+    , test "Codec.unit" <|
+        \_ -> roundtripHelper S.unit ()
     ]
 
 
@@ -162,6 +166,40 @@ objectTests =
                 |> S.finishRecord
             )
         ]
+    , test "nested record" <|
+        \_ ->
+            roundtripHelper
+                (S.record
+                    (\a b ->
+                        { a = a
+                        , b = b
+                        }
+                    )
+                    |> S.field .a
+                        (S.record
+                            (\a b ->
+                                { a = a
+                                , b = b
+                                }
+                            )
+                            |> S.field .a S.int
+                            |> S.field .b S.int
+                            |> S.finishRecord
+                        )
+                    |> S.field .b
+                        (S.record
+                            (\a b ->
+                                { a = a
+                                , b = b
+                                }
+                            )
+                            |> S.field .a S.string
+                            |> S.field .b S.int
+                            |> S.finishRecord
+                        )
+                    |> S.finishRecord
+                )
+                { a = { a = 5, b = 3 }, b = { a = "test", b = 6 } }
     ]
 
 
@@ -179,30 +217,110 @@ customTests =
                 |> S.finishCustomType
             )
         ]
-    , describe "with 1 ctor, 1 arg"
-        [ roundtrips (Fuzz.map T1 maxRangeIntFuzz)
-            (S.customType
-                (\f v ->
-                    case v of
-                        T1 a ->
-                            f a
+    , test "with 1 ctor, 1 arg" <|
+        \_ ->
+            roundtripHelper
+                (S.customType
+                    (\f v ->
+                        case v of
+                            T1 a ->
+                                f a
+                    )
+                    |> S.variant1 T1 S.int
+                    |> S.finishCustomType
                 )
-                |> S.variant1 T1 S.int
-                |> S.finishCustomType
-            )
-        ]
-    , describe "with 1 ctor, 6 arg"
-        [ roundtrips (Fuzz.map5 (T6 0) maxRangeIntFuzz maxRangeIntFuzz maxRangeIntFuzz maxRangeIntFuzz maxRangeIntFuzz)
-            (S.customType
-                (\function v ->
-                    case v of
-                        T6 a b c d e f ->
-                            function a b c d e f
+                (T1 6)
+    , test "with 1 ctor, 2 arg" <|
+        \_ ->
+            roundtripHelper
+                (S.customType
+                    (\function v ->
+                        case v of
+                            T2 a b ->
+                                function a b
+                    )
+                    |> S.variant2 T2 S.int S.int
+                    |> S.finishCustomType
                 )
-                |> S.variant6 T6 S.int S.int S.int S.int S.int S.int
-                |> S.finishCustomType
-            )
-        ]
+                (T2 10 11)
+    , test "with 1 ctor, 3 arg" <|
+        \_ ->
+            roundtripHelper
+                (S.customType
+                    (\function v ->
+                        case v of
+                            T3 a b c ->
+                                function a b c
+                    )
+                    |> S.variant3 T3 S.int S.int S.int
+                    |> S.finishCustomType
+                )
+                (T3 10 11 12)
+    , test "with 1 ctor, 4 arg" <|
+        \_ ->
+            roundtripHelper
+                (S.customType
+                    (\function v ->
+                        case v of
+                            T4 a b c d ->
+                                function a b c d
+                    )
+                    |> S.variant4 T4 S.int S.int S.int S.int
+                    |> S.finishCustomType
+                )
+                (T4 10 11 12 13)
+    , test "with 1 ctor, 5 arg" <|
+        \_ ->
+            roundtripHelper
+                (S.customType
+                    (\function v ->
+                        case v of
+                            T5 a b c d e ->
+                                function a b c d e
+                    )
+                    |> S.variant5 T5 S.int S.int S.int S.int S.int
+                    |> S.finishCustomType
+                )
+                (T5 10 11 12 13 14)
+    , test "with 1 ctor, 6 arg" <|
+        \_ ->
+            roundtripHelper
+                (S.customType
+                    (\function v ->
+                        case v of
+                            T6 a b c d e f ->
+                                function a b c d e f
+                    )
+                    |> S.variant6 T6 S.int S.int S.int S.int S.int S.int
+                    |> S.finishCustomType
+                )
+                (T6 10 11 12 13 14 15)
+    , test "with 1 ctor, 7 arg" <|
+        \_ ->
+            roundtripHelper
+                (S.customType
+                    (\function v ->
+                        case v of
+                            T7 a b c d e f g ->
+                                function a b c d e f g
+                    )
+                    |> S.variant7 T7 S.int S.int S.int S.int S.int S.int S.int
+                    |> S.finishCustomType
+                )
+                (T7 10 11 12 13 14 15 16)
+    , test "with 1 ctor, 8 arg" <|
+        \_ ->
+            roundtripHelper
+                (S.customType
+                    (\function v ->
+                        case v of
+                            T8 a b c d e f g h ->
+                                function a b c d e f g h
+                    )
+                    |> S.variant8 T8 S.int S.int S.int S.int S.int S.int S.int S.int
+                    |> S.finishCustomType
+                )
+                (T8 10 11 12 13 14 15 16 17)
     , describe "with 2 ctors, 0,1 args" <|
         let
             match fnothing fjust value =
