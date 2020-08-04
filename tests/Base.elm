@@ -36,6 +36,9 @@ suite =
                 in
                 expected |> Url.percentEncode |> Expect.equal expected
         , describe "Serizlier version" serializerVersionTests
+        , Test.only <|
+            Test.fuzz Fuzz.float "Json round trip float" <|
+                \value -> String.fromFloat value |> String.toFloat |> Expect.equal (Just value)
         ]
 
 
