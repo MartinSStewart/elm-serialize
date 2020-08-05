@@ -1,5 +1,8 @@
 module Main exposing (..)
 
+{-| These benchmarks take a while to run so don't worry if the browser doesn't show anything for several minutes.
+-}
+
 import AstCodec
 import AstCodecV1
 import Benchmark exposing (Benchmark, benchmark, describe)
@@ -29,6 +32,7 @@ suite =
         ]
 
 
+decodingBenchmarks : Benchmark
 decodingBenchmarks =
     code
         |> Result.map

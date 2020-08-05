@@ -1,7 +1,6 @@
 module Serialize exposing
-    ( Codec, Error(..)
-    , decodeFromJson, decodeFromBytes, decodeFromString
-    , encodeToJson, encodeToBytes, encodeToString
+    ( encodeToJson, decodeFromJson, encodeToBytes, decodeFromBytes, encodeToString, decodeFromString
+    , Codec, Error(..)
     , string, bool, float, int, unit, bytes, byte
     , maybe, list, array, dict, set, tuple, triple, result, enum
     , RecordCodec, record, field, finishRecord
@@ -13,19 +12,23 @@ module Serialize exposing
 {-|
 
 
+# Serialization
+
+You have three options when encoding data. You can represent the data either as json, bytes, or a string.
+Here's some advice when choosing:
+
+  - If performance is important, use `encodeToJson` and `decodeFromJson`
+  - If space efficiency is important, use `encodeToBytes` and `decodeFromBytes`\*
+  - `encodeToString` and `decodeFromString` are good for URL safe strings but otherwise one of the other choices is probably better.
+
+\*`encodeToJson` is more compact when encoding integers with 6 or fewer digits. You may want to try both `encodeToBytes` and `encodeToJson` and see which is better for your use case.
+
+@docs encodeToJson, decodeFromJson, encodeToBytes, decodeFromBytes, encodeToString, decodeFromString
+
+
 # Definition
 
 @docs Codec, Error
-
-
-# Decode
-
-@docs decodeFromJson, decodeFromBytes, decodeFromString
-
-
-# Encode
-
-@docs encodeToJson, encodeToBytes, encodeToString
 
 
 # Primitives
@@ -285,7 +288,7 @@ encodeToString codec =
     encodeToBytes codec >> replaceBase64Chars
 
 
-{-| Convert an Elm value into json.
+{-| Convert an Elm value into json data.
 -}
 encodeToJson : Codec e a -> a -> JE.Value
 encodeToJson codec value =
