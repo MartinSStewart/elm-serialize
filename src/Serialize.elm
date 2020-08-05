@@ -200,13 +200,6 @@ decodeFromJson codec json =
             value
 
         Err error ->
-            let
-                _ =
-                    Debug.log "err" error
-
-                _ =
-                    Debug.log "json" (JE.encode 0 json)
-            in
             Err DataCorrupted
 
 
@@ -263,11 +256,6 @@ getEncoder (Codec m) =
 getJsonEncoder : Codec e a -> a -> JE.Value
 getJsonEncoder (Codec m) =
     m.jsonEncoder
-
-
-applyAllEncoders : Codec e a -> a -> ( BE.Encoder, JE.Value )
-applyAllEncoders codec value =
-    ( getEncoder codec value, getJsonEncoder codec value )
 
 
 {-| Convert an Elm value into a sequence of bytes.
@@ -906,6 +894,7 @@ finishRecord (RecordCodec codec) =
 type CustomTypeCodec a e match v
     = CustomTypeCodec
         { match : match
+        , jsonMatch : match
         , decoder : Int -> Decoder (Result (Error e) v) -> Decoder (Result (Error e) v)
         , jsonDecoder : Int -> JD.Decoder (Result (Error e) v) -> JD.Decoder (Result (Error e) v)
         , idCounter : Int
@@ -948,6 +937,7 @@ customType : match -> CustomTypeCodec { youNeedAtLeastOneVariant : () } e match 
 customType match =
     CustomTypeCodec
         { match = match
+        , jsonMatch = match
         , decoder = \_ -> identity
         , jsonDecoder = \_ -> identity
         , idCounter = 0
@@ -960,23 +950,29 @@ type VariantEncoder
 
 
 variant :
-    ((List VariantEncoder -> VariantEncoder) -> a)
+    ((List BE.Encoder -> VariantEncoder) -> a)
+    -> ((List JE.Value -> VariantEncoder) -> a)
     -> Decoder (Result (Error error) v)
     -> JD.Decoder (Result (Error error) v)
     -> CustomTypeCodec z error (a -> b) v
     -> CustomTypeCodec () error b v
-variant matchPiece decoderPiece jsonDecoderPiece (CustomTypeCodec am) =
+variant matchPiece matchJsonPiece decoderPiece jsonDecoderPiece (CustomTypeCodec am) =
     let
+        enc : List BE.Encoder -> VariantEncoder
         enc v =
-            ( BE.unsignedInt16 endian am.idCounter
-                :: List.map (\(VariantEncoder ( a, _ )) -> a) v
-                |> BE.sequence
-            , JE.int am.idCounter
-                :: List.map (\(VariantEncoder ( _, a )) -> a) v
-                |> JE.list identity
+            ( BE.unsignedInt16 endian am.idCounter :: v |> BE.sequence
+            , JE.null
             )
                 |> VariantEncoder
 
+        jsonEnc : List JE.Value -> VariantEncoder
+        jsonEnc v =
+            ( BE.sequence []
+            , JE.int am.idCounter :: v |> JE.list identity
+            )
+                |> VariantEncoder
+
+        decoder_ : Int -> Decoder (Result (Error error) v) -> Decoder (Result (Error error) v)
         decoder_ tag orElse =
             if tag == am.idCounter then
                 decoderPiece
@@ -984,6 +980,7 @@ variant matchPiece decoderPiece jsonDecoderPiece (CustomTypeCodec am) =
             else
                 am.decoder tag orElse
 
+        jsonDecoder_ : Int -> JD.Decoder (Result (Error error) v) -> JD.Decoder (Result (Error error) v)
         jsonDecoder_ tag orElse =
             if tag == am.idCounter then
                 jsonDecoderPiece
@@ -993,6 +990,7 @@ variant matchPiece decoderPiece jsonDecoderPiece (CustomTypeCodec am) =
     in
     CustomTypeCodec
         { match = am.match <| matchPiece enc
+        , jsonMatch = am.jsonMatch <| matchJsonPiece jsonEnc
         , decoder = decoder_
         , jsonDecoder = jsonDecoder_
         , idCounter = am.idCounter + 1
@@ -1004,6 +1002,7 @@ variant matchPiece decoderPiece jsonDecoderPiece (CustomTypeCodec am) =
 variant0 : v -> CustomTypeCodec z e (VariantEncoder -> a) v -> CustomTypeCodec () e a v
 variant0 ctor =
     variant
+        (\c -> c [])
         (\c -> c [])
         (BD.succeed (Ok ctor))
         (JD.succeed (Ok ctor))
@@ -1020,7 +1019,12 @@ variant1 ctor m1 =
     variant
         (\c v ->
             c
-                [ applyAllEncoders m1 v |> VariantEncoder
+                [ getEncoder m1 v
+                ]
+        )
+        (\c v ->
+            c
+                [ getJsonEncoder m1 v
                 ]
         )
         (BD.map (result1 ctor) (getDecoder m1))
@@ -1048,10 +1052,15 @@ variant2 :
 variant2 ctor m1 m2 =
     variant
         (\c v1 v2 ->
-            [ applyAllEncoders m1 v1
-            , applyAllEncoders m2 v2
+            [ getEncoder m1 v1
+            , getEncoder m2 v2
             ]
-                |> List.map VariantEncoder
+                |> c
+        )
+        (\c v1 v2 ->
+            [ getJsonEncoder m1 v1
+            , getJsonEncoder m2 v2
+            ]
                 |> c
         )
         (BD.map2
@@ -1091,11 +1100,17 @@ variant3 :
 variant3 ctor m1 m2 m3 =
     variant
         (\c v1 v2 v3 ->
-            [ applyAllEncoders m1 v1
-            , applyAllEncoders m2 v2
-            , applyAllEncoders m3 v3
+            [ getEncoder m1 v1
+            , getEncoder m2 v2
+            , getEncoder m3 v3
             ]
-                |> List.map VariantEncoder
+                |> c
+        )
+        (\c v1 v2 v3 ->
+            [ getJsonEncoder m1 v1
+            , getJsonEncoder m2 v2
+            , getJsonEncoder m3 v3
+            ]
                 |> c
         )
         (BD.map3
@@ -1141,12 +1156,19 @@ variant4 :
 variant4 ctor m1 m2 m3 m4 =
     variant
         (\c v1 v2 v3 v4 ->
-            [ applyAllEncoders m1 v1
-            , applyAllEncoders m2 v2
-            , applyAllEncoders m3 v3
-            , applyAllEncoders m4 v4
+            [ getEncoder m1 v1
+            , getEncoder m2 v2
+            , getEncoder m3 v3
+            , getEncoder m4 v4
             ]
-                |> List.map VariantEncoder
+                |> c
+        )
+        (\c v1 v2 v3 v4 ->
+            [ getJsonEncoder m1 v1
+            , getJsonEncoder m2 v2
+            , getJsonEncoder m3 v3
+            , getJsonEncoder m4 v4
+            ]
                 |> c
         )
         (BD.map4
@@ -1198,13 +1220,21 @@ variant5 :
 variant5 ctor m1 m2 m3 m4 m5 =
     variant
         (\c v1 v2 v3 v4 v5 ->
-            [ applyAllEncoders m1 v1
-            , applyAllEncoders m2 v2
-            , applyAllEncoders m3 v3
-            , applyAllEncoders m4 v4
-            , applyAllEncoders m5 v5
+            [ getEncoder m1 v1
+            , getEncoder m2 v2
+            , getEncoder m3 v3
+            , getEncoder m4 v4
+            , getEncoder m5 v5
             ]
-                |> List.map VariantEncoder
+                |> c
+        )
+        (\c v1 v2 v3 v4 v5 ->
+            [ getJsonEncoder m1 v1
+            , getJsonEncoder m2 v2
+            , getJsonEncoder m3 v3
+            , getJsonEncoder m4 v4
+            , getJsonEncoder m5 v5
+            ]
                 |> c
         )
         (BD.map5
@@ -1261,14 +1291,23 @@ variant6 :
 variant6 ctor m1 m2 m3 m4 m5 m6 =
     variant
         (\c v1 v2 v3 v4 v5 v6 ->
-            [ applyAllEncoders m1 v1
-            , applyAllEncoders m2 v2
-            , applyAllEncoders m3 v3
-            , applyAllEncoders m4 v4
-            , applyAllEncoders m5 v5
-            , applyAllEncoders m6 v6
+            [ getEncoder m1 v1
+            , getEncoder m2 v2
+            , getEncoder m3 v3
+            , getEncoder m4 v4
+            , getEncoder m5 v5
+            , getEncoder m6 v6
             ]
-                |> List.map VariantEncoder
+                |> c
+        )
+        (\c v1 v2 v3 v4 v5 v6 ->
+            [ getJsonEncoder m1 v1
+            , getJsonEncoder m2 v2
+            , getJsonEncoder m3 v3
+            , getJsonEncoder m4 v4
+            , getJsonEncoder m5 v5
+            , getJsonEncoder m6 v6
+            ]
                 |> c
         )
         (BD.map5
@@ -1336,15 +1375,25 @@ variant7 :
 variant7 ctor m1 m2 m3 m4 m5 m6 m7 =
     variant
         (\c v1 v2 v3 v4 v5 v6 v7 ->
-            [ applyAllEncoders m1 v1
-            , applyAllEncoders m2 v2
-            , applyAllEncoders m3 v3
-            , applyAllEncoders m4 v4
-            , applyAllEncoders m5 v5
-            , applyAllEncoders m6 v6
-            , applyAllEncoders m7 v7
+            [ getEncoder m1 v1
+            , getEncoder m2 v2
+            , getEncoder m3 v3
+            , getEncoder m4 v4
+            , getEncoder m5 v5
+            , getEncoder m6 v6
+            , getEncoder m7 v7
             ]
-                |> List.map VariantEncoder
+                |> c
+        )
+        (\c v1 v2 v3 v4 v5 v6 v7 ->
+            [ getJsonEncoder m1 v1
+            , getJsonEncoder m2 v2
+            , getJsonEncoder m3 v3
+            , getJsonEncoder m4 v4
+            , getJsonEncoder m5 v5
+            , getJsonEncoder m6 v6
+            , getJsonEncoder m7 v7
+            ]
                 |> c
         )
         (BD.map5
@@ -1422,16 +1471,27 @@ variant8 :
 variant8 ctor m1 m2 m3 m4 m5 m6 m7 m8 =
     variant
         (\c v1 v2 v3 v4 v5 v6 v7 v8 ->
-            [ applyAllEncoders m1 v1
-            , applyAllEncoders m2 v2
-            , applyAllEncoders m3 v3
-            , applyAllEncoders m4 v4
-            , applyAllEncoders m5 v5
-            , applyAllEncoders m6 v6
-            , applyAllEncoders m7 v7
-            , applyAllEncoders m8 v8
+            [ getEncoder m1 v1
+            , getEncoder m2 v2
+            , getEncoder m3 v3
+            , getEncoder m4 v4
+            , getEncoder m5 v5
+            , getEncoder m6 v6
+            , getEncoder m7 v7
+            , getEncoder m8 v8
             ]
-                |> List.map VariantEncoder
+                |> c
+        )
+        (\c v1 v2 v3 v4 v5 v6 v7 v8 ->
+            [ getJsonEncoder m1 v1
+            , getJsonEncoder m2 v2
+            , getJsonEncoder m3 v3
+            , getJsonEncoder m4 v4
+            , getJsonEncoder m5 v5
+            , getJsonEncoder m6 v6
+            , getJsonEncoder m7 v7
+            , getJsonEncoder m8 v8
+            ]
                 |> c
         )
         (BD.map5
@@ -1506,14 +1566,14 @@ result8 ctor v1 v2 ( v3, v4 ) ( v5, v6 ) ( v7, v8 ) =
 finishCustomType : CustomTypeCodec () e (a -> VariantEncoder) a -> Codec e a
 finishCustomType (CustomTypeCodec am) =
     build
-        (\v -> am.match v |> (\(VariantEncoder ( a, _ )) -> a))
+        (am.match >> (\(VariantEncoder ( a, _ )) -> a))
         (BD.unsignedInt16 endian
             |> BD.andThen
                 (\tag ->
                     am.decoder tag (BD.succeed (Err DataCorrupted))
                 )
         )
-        (\v -> am.match v |> (\(VariantEncoder ( _, a )) -> a))
+        (am.jsonMatch >> (\(VariantEncoder ( _, a )) -> a))
         (JD.index 0 JD.int
             |> JD.andThen
                 (\tag ->

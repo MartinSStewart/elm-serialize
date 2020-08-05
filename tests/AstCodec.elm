@@ -1,6 +1,5 @@
 module AstCodec exposing (file)
 
-import Bitwise
 import Elm.Syntax.Declaration exposing (Declaration(..))
 import Elm.Syntax.Exposing exposing (ExposedType, Exposing(..), TopLevelExpose(..))
 import Elm.Syntax.Expression exposing (CaseBlock, Expression(..), Function, FunctionImplementation, Lambda, LetBlock, LetDeclaration(..), RecordSetter)
@@ -21,20 +20,9 @@ import Serialize as S exposing (Codec)
 location : Codec e Location
 location =
     S.record (\row column -> Location row column)
-        |> S.field (.row >> Debug.log "b") S.int
+        |> S.field .row S.int
         |> S.field .column S.int
         |> S.finishRecord
-
-
-
---S.int
---    |> S.map
---        (\int ->
---            { row = Bitwise.shiftRightBy 16 int
---            , column = Bitwise.and int locationMask
---            }
---        )
---        (\{ row, column } -> Bitwise.or (row * (2 ^ 16)) column |> Debug.log "a")
 
 
 range : Codec e Range
@@ -388,7 +376,7 @@ lazyExpression =
 file : Codec DecodeError File
 file =
     S.record File
-        |> S.field (.moduleDefinition >> Debug.log "module") (node module_)
+        |> S.field .moduleDefinition (node module_)
         |> S.field .imports (S.list (node import_))
         |> S.field .declarations (S.list (node declaration))
         |> S.field .comments (S.list (node S.string))
@@ -410,7 +398,7 @@ module_ =
         (\e0 e1 e2 value ->
             case value of
                 NormalModule a ->
-                    e0 a |> Debug.log "e0"
+                    e0 a
 
                 PortModule a ->
                     e1 a
@@ -437,7 +425,7 @@ effectModuleData =
 defaultModuleData : Codec e DefaultModuleData
 defaultModuleData =
     S.record DefaultModuleData
-        |> S.field (.moduleName >> Debug.log "moduleName") (node (S.list S.string))
+        |> S.field .moduleName (node (S.list S.string))
         |> S.field .exposingList (node exposing_)
         |> S.finishRecord
 
