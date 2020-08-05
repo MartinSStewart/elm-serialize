@@ -80,6 +80,16 @@ basicTests =
     , describe "Codec.byte"
         [ roundtrips (Fuzz.intRange 0 255) S.byte
         ]
+    , Test.fuzz Fuzz.int "Codec.byte with value outside of 0-255 range wrap around for encodeToBytes" <|
+        \value ->
+            S.encodeToBytes S.byte value
+                |> S.decodeFromBytes S.byte
+                |> Expect.equal (Ok (modBy 256 value))
+    , Test.fuzz Fuzz.int "Codec.byte with value outside of 0-255 range wrap around for encodeToJson" <|
+        \value ->
+            S.encodeToJson S.byte value
+                |> S.decodeFromJson S.byte
+                |> Expect.equal (Ok (modBy 256 value))
     , test "Codec.unit" <|
         \_ -> roundtripHelper S.unit ()
     ]

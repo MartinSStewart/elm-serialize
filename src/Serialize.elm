@@ -199,7 +199,7 @@ decodeFromJson codec json =
         Ok value ->
             value
 
-        Err error ->
+        Err _ ->
             Err DataCorrupted
 
 
@@ -700,13 +700,16 @@ This is useful if you have a small integer you want to serialize and not use up 
             |> S.field .blue byte
             |> S.finishRecord
 
+**Warning:** values greater than 255 or less than 0 will wrap around.
+So if you encode -1 you'll get back 255 and if you encode 257 you'll get back 2.
+
 -}
 byte : Codec e Int
 byte =
     build
         BE.unsignedInt8
         (BD.unsignedInt8 |> BD.map Ok)
-        JE.int
+        (modBy 256 >> JE.int)
         (JD.int |> JD.map Ok)
 
 
@@ -727,6 +730,9 @@ If you try to encode an item that isn't in the list then the first item is defau
     daysOfWeekCodec : S.Codec DaysOfWeek
     daysOfWeekCodec =
         S.enum Monday [ Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday ]
+
+Note that inserting new items in the middle of the list or removing items is a breaking change.
+It's safe to add items to the end of the list though.
 
 -}
 enum : a -> List a -> Codec e a
