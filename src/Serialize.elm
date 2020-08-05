@@ -1,14 +1,13 @@
 module Serialize exposing
     ( Codec, Error(..)
-    , decodeFromBytes, decodeFromString
-    , encodeToBytes, encodeToString
+    , decodeFromJson, decodeFromBytes, decodeFromString
+    , encodeToJson, encodeToBytes, encodeToString
     , string, bool, float, int, unit, bytes, byte
     , maybe, list, array, dict, set, tuple, triple, result, enum
     , RecordCodec, record, field, finishRecord
     , CustomTypeCodec, customType, variant0, variant1, variant2, variant3, variant4, variant5, variant6, variant7, variant8, finishCustomType, VariantEncoder
     , map, mapValid, mapError
     , lazy
-    , decodeFromJson, encodeToJson
     )
 
 {-|
@@ -21,12 +20,12 @@ module Serialize exposing
 
 # Decode
 
-@docs decodeFromBytes, decodeFromString
+@docs decodeFromJson, decodeFromBytes, decodeFromString
 
 
 # Encode
 
-@docs encodeToBytes, encodeToString
+@docs encodeToJson, encodeToBytes, encodeToString
 
 
 # Primitives
@@ -178,6 +177,8 @@ decodeFromString codec base64 =
             Err DataCorrupted
 
 
+{-| Run a `Codec` to turn a json value encoded with `encodeToJson` into an Elm value.
+-}
 decodeFromJson : Codec e a -> JE.Value -> Result (Error e) a
 decodeFromJson codec json =
     let
@@ -284,6 +285,8 @@ encodeToString codec =
     encodeToBytes codec >> replaceBase64Chars
 
 
+{-| Convert an Elm value into json.
+-}
 encodeToJson : Codec e a -> a -> JE.Value
 encodeToJson codec value =
     JE.list
