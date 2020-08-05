@@ -6,8 +6,8 @@ This is done via `Codec`s which automatically create both the encoder and decode
 ### What elm-serialize is good for?
 - Sparing you from having to write both encoders and decoders
 - Reliably encoding and decoding Elm types (no more failing to decode because you made a typo somewhere!)
-- The data format is an implementation detail so you can use `encodeToBytes` for a space efficient binary format or `encodeToString` for a url safe, easy to transport format.
-    
+- The data format is an implementation detail so you can use `encodeToJson`, `encodeToBytes`, or `encodeToString`.
+
 ### What elm-serialize is *not* good for?
 - Decoding external data formats
 - Encoding to a human readable format
