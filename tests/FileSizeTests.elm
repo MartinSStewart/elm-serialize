@@ -1,34 +1,87 @@
-module Serialize exposing
-    ( encodeToJson, decodeFromJson, encodeToBytes, decodeFromBytes, encodeToString, decodeFromString
-    , Codec, Error(..)
+module FileSizeTests exposing (..)
+
+import AstCodec
+import Bytes
+import Bytes.Encode
+import Elm.Parser
+import Elm.Processing
+import Expect
+import Json.Encode
+import Serialize
+import Test exposing (Test, describe, test)
+
+
+tests : Test
+tests =
+    describe "File size test"
+        [ test "encodeToJson file size" <|
+            \_ ->
+                case code of
+                    Ok parsed ->
+                        Elm.Processing.process Elm.Processing.init parsed
+                            |> Serialize.encodeToJson AstCodec.file
+                            |> Json.Encode.encode 0
+                            |> Bytes.Encode.getStringWidth
+                            |> Expect.lessThan 211657
+
+                    Err error ->
+                        Expect.fail ("Failed to parse: " ++ Debug.toString error)
+        , test "encodeToBytes file size" <|
+            \_ ->
+                case code of
+                    Ok parsed ->
+                        Elm.Processing.process Elm.Processing.init parsed
+                            |> Serialize.encodeToBytes AstCodec.file
+                            |> Bytes.width
+                            |> Expect.lessThan 259131
+
+                    Err error ->
+                        Expect.fail ("Failed to parse: " ++ Debug.toString error)
+        , test "encodeToString file size" <|
+            \_ ->
+                case code of
+                    Ok parsed ->
+                        Elm.Processing.process Elm.Processing.init parsed
+                            |> Serialize.encodeToString AstCodec.file
+                            |> Bytes.Encode.getStringWidth
+                            |> Expect.lessThan 345508
+
+                    Err error ->
+                        Expect.fail ("Failed to parse: " ++ Debug.toString error)
+        ]
+
+
+code =
+    Elm.Parser.parse <|
+        """module Serialize exposing
+    ( Codec, Error(..)
+    , decodeFromBytes, decodeFromString
+    , encodeToBytes, encodeToString
     , string, bool, float, int, unit, bytes, byte
     , maybe, list, array, dict, set, tuple, triple, result, enum
     , RecordCodec, record, field, finishRecord
     , CustomTypeCodec, customType, variant0, variant1, variant2, variant3, variant4, variant5, variant6, variant7, variant8, finishCustomType, VariantEncoder
     , map, mapValid, mapError
     , lazy
+    , decodeFromJson, encodeToJson
     )
 
 {-|
 
 
-# Serialization
-
-You have three options when encoding data. You can represent the data either as json, bytes, or a string.
-Here's some advice when choosing:
-
-  - If performance is important, use `encodeToJson` and `decodeFromJson`
-  - If space efficiency is important, use `encodeToBytes` and `decodeFromBytes`\*
-  - `encodeToString` and `decodeFromString` are good for URL safe strings but otherwise one of the other choices is probably better.
-
-\*`encodeToJson` is more compact when encoding integers with 6 or fewer digits. You may want to try both `encodeToBytes` and `encodeToJson` and see which is better for your use case.
-
-@docs encodeToJson, decodeFromJson, encodeToBytes, decodeFromBytes, encodeToString, decodeFromString
-
-
 # Definition
 
 @docs Codec, Error
+
+
+# Decode
+
+@docs decodeFromBytes, decodeFromString
+
+
+# Encode
+
+@docs encodeToBytes, encodeToString
 
 
 # Primitives
@@ -93,10 +146,10 @@ type Codec e a
 {-| Possible errors that can occur when decoding.
 
   - `CustomError` - An error caused by `andThen` returning an Err value.
-  - `DataCorrupted` - This most likely will occur if you make breaking changes to your codec and try to decode old data\*. Have a look at `How do I change my codecs and still be able to decode old data?` in the readme for how to avoid introducing breaking changes.
+  - `DataCorrupted` - This most likely will occur if you make breaking changes to your codec and try to decode old data\\*. Have a look at `How do I change my codecs and still be able to decode old data?` in the readme for how to avoid introducing breaking changes.
   - `SerializerOutOfDate` - When encoding, this package will include a version number. This makes it possible for me to make improvements to how data gets encoded without introducing breaking changes to your codecs. This error then, says that you're trying to decode data encoded with a newer version of elm-serialize.
 
-\*It's possible for corrupted data to still succeed in decoding (but with nonsense Elm values).
+\\*It's possible for corrupted data to still succeed in decoding (but with nonsense Elm values).
 This is because internally we're just encoding Elm values and not storing any kind of structural information.
 So if you encoded an Int and then a Float, and then tried decoding it as a Float and then an Int, there's no way for the decoder to know it read the data in the wrong order.
 
@@ -149,7 +202,7 @@ decodeFromBytes codec bytes_ =
         decoder =
             BD.unsignedInt8
                 |> BD.andThen
-                    (\value ->
+                    (\\value ->
                         if value <= 0 then
                             Err DataCorrupted |> BD.succeed
 
@@ -180,15 +233,13 @@ decodeFromString codec base64 =
             Err DataCorrupted
 
 
-{-| Run a `Codec` to turn a json value encoded with `encodeToJson` into an Elm value.
--}
 decodeFromJson : Codec e a -> JE.Value -> Result (Error e) a
 decodeFromJson codec json =
     let
         decoder =
             JD.index 0 JD.int
                 |> JD.andThen
-                    (\value ->
+                    (\\value ->
                         if value <= 0 then
                             Err DataCorrupted |> JD.succeed
 
@@ -203,7 +254,7 @@ decodeFromJson codec json =
         Ok value ->
             value
 
-        Err _ ->
+        Err error ->
             Err DataCorrupted
 
 
@@ -288,8 +339,6 @@ encodeToString codec =
     encodeToBytes codec >> replaceBase64Chars
 
 
-{-| Convert an Elm value into json data.
--}
 encodeToJson : Codec e a -> a -> JE.Value
 encodeToJson codec value =
     JE.list
@@ -318,7 +367,7 @@ replaceBase64Chars =
 
 replaceForUrl : Regex
 replaceForUrl =
-    Regex.fromString "[\\+/=]" |> Maybe.withDefault Regex.never
+    Regex.fromString "[\\\\+/=]" |> Maybe.withDefault Regex.never
 
 
 
@@ -345,7 +394,7 @@ build encoder_ decoder_ jsonEncoder jsonDecoder =
 string : Codec e String
 string =
     build
-        (\text ->
+        (\\text ->
             BE.sequence
                 [ BE.unsignedInt32 endian (BE.getStringWidth text)
                 , BE.string text
@@ -353,7 +402,7 @@ string =
         )
         (BD.unsignedInt32 endian
             |> BD.andThen
-                (\charCount -> BD.string charCount |> BD.map Ok)
+                (\\charCount -> BD.string charCount |> BD.map Ok)
         )
         JE.string
         (JD.string |> JD.map Ok)
@@ -364,7 +413,7 @@ string =
 bool : Codec e Bool
 bool =
     build
-        (\value ->
+        (\\value ->
             case value of
                 True ->
                     BE.unsignedInt8 1
@@ -374,7 +423,7 @@ bool =
         )
         (BD.unsignedInt8
             |> BD.map
-                (\value ->
+                (\\value ->
                     case value of
                         0 ->
                             Ok False
@@ -426,9 +475,9 @@ char =
     build
         (String.fromChar >> charEncode)
         (BD.unsignedInt32 endian
-            |> BD.andThen (\charCount -> BD.string charCount)
+            |> BD.andThen (\\charCount -> BD.string charCount)
             |> BD.map
-                (\text ->
+                (\\text ->
                     case String.toList text |> List.head of
                         Just char_ ->
                             Ok char_
@@ -440,7 +489,7 @@ char =
         (String.fromChar >> JE.string)
         (JD.string
             |> JD.map
-                (\text ->
+                (\\text ->
                     case String.toList text |> List.head of
                         Just char_ ->
                             Ok char_
@@ -467,7 +516,7 @@ char =
 maybe : Codec e a -> Codec e (Maybe a)
 maybe justCodec =
     customType
-        (\nothingEncoder justEncoder value ->
+        (\\nothingEncoder justEncoder value ->
             case value of
                 Nothing ->
                     nothingEncoder
@@ -495,13 +544,13 @@ list codec =
         (listEncode (getEncoder codec))
         (BD.unsignedInt32 endian
             |> BD.andThen
-                (\length -> BD.loop ( length, [] ) (listStep (getDecoder codec)))
+                (\\length -> BD.loop ( length, [] ) (listStep (getDecoder codec)))
         )
         (JE.list (getJsonEncoder codec))
         (JD.list (getJsonDecoder codec)
             |> JD.map
                 (List.foldr
-                    (\value state ->
+                    (\\value state ->
                         case ( value, state ) of
                             ( Ok ok, Ok okState ) ->
                                 ok :: okState |> Ok
@@ -542,7 +591,7 @@ listStep decoder_ ( n, xs ) =
 
     else
         BD.map
-            (\x ->
+            (\\x ->
                 case x of
                     Ok ok ->
                         BD.Loop ( n - 1, ok :: xs )
@@ -592,7 +641,7 @@ unit =
     build
         (always (BE.sequence []))
         (BD.succeed (Ok ()))
-        (\_ -> JE.int 0)
+        (\\_ -> JE.int 0)
         (JD.succeed (Ok ()))
 
 
@@ -624,10 +673,10 @@ tuple codecFirst codecSecond =
 -}
 triple : Codec e a -> Codec e b -> Codec e c -> Codec e ( a, b, c )
 triple codecFirst codecSecond codecThird =
-    record (\a b c -> ( a, b, c ))
-        |> field (\( a, _, _ ) -> a) codecFirst
-        |> field (\( _, b, _ ) -> b) codecSecond
-        |> field (\( _, _, c ) -> c) codecThird
+    record (\\a b c -> ( a, b, c ))
+        |> field (\\( a, _, _ ) -> a) codecFirst
+        |> field (\\( _, b, _ ) -> b) codecSecond
+        |> field (\\( _, _, c ) -> c) codecThird
         |> finishRecord
 
 
@@ -636,7 +685,7 @@ triple codecFirst codecSecond codecThird =
 result : Codec e error -> Codec e value -> Codec e (Result error value)
 result errorCodec valueCodec =
     customType
-        (\errEncoder okEncoder value ->
+        (\\errEncoder okEncoder value ->
             case value of
                 Err err ->
                     errEncoder err
@@ -666,17 +715,17 @@ This is useful in combination with `mapValid` for encoding and decoding data usi
 bytes : Codec e Bytes.Bytes
 bytes =
     build
-        (\bytes_ ->
+        (\\bytes_ ->
             BE.sequence
                 [ BE.unsignedInt32 endian (Bytes.width bytes_)
                 , BE.bytes bytes_
                 ]
         )
-        (BD.unsignedInt32 endian |> BD.andThen (\length -> BD.bytes length |> BD.map Ok))
+        (BD.unsignedInt32 endian |> BD.andThen (\\length -> BD.bytes length |> BD.map Ok))
         (replaceBase64Chars >> JE.string)
         (JD.string
             |> JD.map
-                (\text ->
+                (\\text ->
                     case decode text of
                         Just bytes_ ->
                             Ok bytes_
@@ -706,16 +755,13 @@ This is useful if you have a small integer you want to serialize and not use up 
             |> S.field .blue byte
             |> S.finishRecord
 
-**Warning:** values greater than 255 or less than 0 will wrap around.
-So if you encode -1 you'll get back 255 and if you encode 257 you'll get back 2.
-
 -}
 byte : Codec e Int
 byte =
     build
         BE.unsignedInt8
         (BD.unsignedInt8 |> BD.map Ok)
-        (modBy 256 >> JE.int)
+        JE.int
         (JD.int |> JD.map Ok)
 
 
@@ -736,9 +782,6 @@ If you try to encode an item that isn't in the list then the first item is defau
     daysOfWeekCodec : S.Codec DaysOfWeek
     daysOfWeekCodec =
         S.enum Monday [ Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday ]
-
-Note that inserting new items in the middle of the list or removing items is a breaking change.
-It's safe to add items to the end of the list though.
 
 -}
 enum : a -> List a -> Codec e a
@@ -836,9 +879,9 @@ type RecordCodec e a b
 record : b -> RecordCodec e a b
 record ctor =
     RecordCodec
-        { encoder = \_ -> []
+        { encoder = \\_ -> []
         , decoder = BD.succeed (Ok ctor)
-        , jsonEncoder = \_ -> []
+        , jsonEncoder = \\_ -> []
         , jsonDecoder = JD.succeed (Ok ctor)
         , fieldIndex = 0
         }
@@ -849,10 +892,10 @@ record ctor =
 field : (a -> f) -> Codec e f -> RecordCodec e a (f -> b) -> RecordCodec e a b
 field getter codec (RecordCodec recordCodec) =
     RecordCodec
-        { encoder = \v -> (getEncoder codec <| getter v) :: recordCodec.encoder v
+        { encoder = \\v -> (getEncoder codec <| getter v) :: recordCodec.encoder v
         , decoder =
             BD.map2
-                (\f x ->
+                (\\f x ->
                     case ( f, x ) of
                         ( Ok fOk, Ok xOk ) ->
                             fOk xOk |> Ok
@@ -865,10 +908,10 @@ field getter codec (RecordCodec recordCodec) =
                 )
                 recordCodec.decoder
                 (getDecoder codec)
-        , jsonEncoder = \v -> (getJsonEncoder codec <| getter v) :: recordCodec.jsonEncoder v
+        , jsonEncoder = \\v -> (getJsonEncoder codec <| getter v) :: recordCodec.jsonEncoder v
         , jsonDecoder =
             JD.map2
-                (\f x ->
+                (\\f x ->
                     case ( f, x ) of
                         ( Ok fOk, Ok xOk ) ->
                             fOk xOk |> Ok
@@ -926,7 +969,7 @@ You need to pass a pattern matching function, see the FAQ for details.
     semaphoreCodec : S.Codec Semaphore
     semaphoreCodec =
         S.custom
-            (\redEncoder yellowEncoder greenEncoder value ->
+            (\\redEncoder yellowEncoder greenEncoder value ->
                 case value of
                     Red i s b ->
                         redEncoder i s b
@@ -950,8 +993,8 @@ customType match =
     CustomTypeCodec
         { match = match
         , jsonMatch = match
-        , decoder = \_ -> identity
-        , jsonDecoder = \_ -> identity
+        , decoder = \\_ -> identity
+        , jsonDecoder = \\_ -> identity
         , idCounter = 0
         }
 
@@ -1014,8 +1057,8 @@ variant matchPiece matchJsonPiece decoderPiece jsonDecoderPiece (CustomTypeCodec
 variant0 : v -> CustomTypeCodec z e (VariantEncoder -> a) v -> CustomTypeCodec () e a v
 variant0 ctor =
     variant
-        (\c -> c [])
-        (\c -> c [])
+        (\\c -> c [])
+        (\\c -> c [])
         (BD.succeed (Ok ctor))
         (JD.succeed (Ok ctor))
 
@@ -1029,12 +1072,12 @@ variant1 :
     -> CustomTypeCodec () error b v
 variant1 ctor m1 =
     variant
-        (\c v ->
+        (\\c v ->
             c
                 [ getEncoder m1 v
                 ]
         )
-        (\c v ->
+        (\\c v ->
             c
                 [ getJsonEncoder m1 v
                 ]
@@ -1063,13 +1106,13 @@ variant2 :
     -> CustomTypeCodec () error c v
 variant2 ctor m1 m2 =
     variant
-        (\c v1 v2 ->
+        (\\c v1 v2 ->
             [ getEncoder m1 v1
             , getEncoder m2 v2
             ]
                 |> c
         )
-        (\c v1 v2 ->
+        (\\c v1 v2 ->
             [ getJsonEncoder m1 v1
             , getJsonEncoder m2 v2
             ]
@@ -1111,14 +1154,14 @@ variant3 :
     -> CustomTypeCodec () error partial v
 variant3 ctor m1 m2 m3 =
     variant
-        (\c v1 v2 v3 ->
+        (\\c v1 v2 v3 ->
             [ getEncoder m1 v1
             , getEncoder m2 v2
             , getEncoder m3 v3
             ]
                 |> c
         )
-        (\c v1 v2 v3 ->
+        (\\c v1 v2 v3 ->
             [ getJsonEncoder m1 v1
             , getJsonEncoder m2 v2
             , getJsonEncoder m3 v3
@@ -1167,7 +1210,7 @@ variant4 :
     -> CustomTypeCodec () error partial v
 variant4 ctor m1 m2 m3 m4 =
     variant
-        (\c v1 v2 v3 v4 ->
+        (\\c v1 v2 v3 v4 ->
             [ getEncoder m1 v1
             , getEncoder m2 v2
             , getEncoder m3 v3
@@ -1175,7 +1218,7 @@ variant4 ctor m1 m2 m3 m4 =
             ]
                 |> c
         )
-        (\c v1 v2 v3 v4 ->
+        (\\c v1 v2 v3 v4 ->
             [ getJsonEncoder m1 v1
             , getJsonEncoder m2 v2
             , getJsonEncoder m3 v3
@@ -1231,7 +1274,7 @@ variant5 :
     -> CustomTypeCodec () error partial v
 variant5 ctor m1 m2 m3 m4 m5 =
     variant
-        (\c v1 v2 v3 v4 v5 ->
+        (\\c v1 v2 v3 v4 v5 ->
             [ getEncoder m1 v1
             , getEncoder m2 v2
             , getEncoder m3 v3
@@ -1240,7 +1283,7 @@ variant5 ctor m1 m2 m3 m4 m5 =
             ]
                 |> c
         )
-        (\c v1 v2 v3 v4 v5 ->
+        (\\c v1 v2 v3 v4 v5 ->
             [ getJsonEncoder m1 v1
             , getJsonEncoder m2 v2
             , getJsonEncoder m3 v3
@@ -1302,7 +1345,7 @@ variant6 :
     -> CustomTypeCodec () error partial v
 variant6 ctor m1 m2 m3 m4 m5 m6 =
     variant
-        (\c v1 v2 v3 v4 v5 v6 ->
+        (\\c v1 v2 v3 v4 v5 v6 ->
             [ getEncoder m1 v1
             , getEncoder m2 v2
             , getEncoder m3 v3
@@ -1312,7 +1355,7 @@ variant6 ctor m1 m2 m3 m4 m5 m6 =
             ]
                 |> c
         )
-        (\c v1 v2 v3 v4 v5 v6 ->
+        (\\c v1 v2 v3 v4 v5 v6 ->
             [ getJsonEncoder m1 v1
             , getJsonEncoder m2 v2
             , getJsonEncoder m3 v3
@@ -1386,7 +1429,7 @@ variant7 :
     -> CustomTypeCodec () error partial v
 variant7 ctor m1 m2 m3 m4 m5 m6 m7 =
     variant
-        (\c v1 v2 v3 v4 v5 v6 v7 ->
+        (\\c v1 v2 v3 v4 v5 v6 v7 ->
             [ getEncoder m1 v1
             , getEncoder m2 v2
             , getEncoder m3 v3
@@ -1397,7 +1440,7 @@ variant7 ctor m1 m2 m3 m4 m5 m6 m7 =
             ]
                 |> c
         )
-        (\c v1 v2 v3 v4 v5 v6 v7 ->
+        (\\c v1 v2 v3 v4 v5 v6 v7 ->
             [ getJsonEncoder m1 v1
             , getJsonEncoder m2 v2
             , getJsonEncoder m3 v3
@@ -1482,7 +1525,7 @@ variant8 :
     -> CustomTypeCodec () error partial v
 variant8 ctor m1 m2 m3 m4 m5 m6 m7 m8 =
     variant
-        (\c v1 v2 v3 v4 v5 v6 v7 v8 ->
+        (\\c v1 v2 v3 v4 v5 v6 v7 v8 ->
             [ getEncoder m1 v1
             , getEncoder m2 v2
             , getEncoder m3 v3
@@ -1494,7 +1537,7 @@ variant8 ctor m1 m2 m3 m4 m5 m6 m7 m8 =
             ]
                 |> c
         )
-        (\c v1 v2 v3 v4 v5 v6 v7 v8 ->
+        (\\c v1 v2 v3 v4 v5 v6 v7 v8 ->
             [ getJsonEncoder m1 v1
             , getJsonEncoder m2 v2
             , getJsonEncoder m3 v3
@@ -1578,17 +1621,17 @@ result8 ctor v1 v2 ( v3, v4 ) ( v5, v6 ) ( v7, v8 ) =
 finishCustomType : CustomTypeCodec () e (a -> VariantEncoder) a -> Codec e a
 finishCustomType (CustomTypeCodec am) =
     build
-        (am.match >> (\(VariantEncoder ( a, _ )) -> a))
+        (am.match >> (\\(VariantEncoder ( a, _ )) -> a))
         (BD.unsignedInt16 endian
             |> BD.andThen
-                (\tag ->
+                (\\tag ->
                     am.decoder tag (BD.succeed (Err DataCorrupted))
                 )
         )
-        (am.jsonMatch >> (\(VariantEncoder ( _, a )) -> a))
+        (am.jsonMatch >> (\\(VariantEncoder ( _, a )) -> a))
         (JD.index 0 JD.int
             |> JD.andThen
-                (\tag ->
+                (\\tag ->
                     am.jsonDecoder tag (JD.succeed (Err DataCorrupted))
                 )
         )
@@ -1607,7 +1650,7 @@ finishCustomType (CustomTypeCodec am) =
 
     userIdCodec : S.Codec UserId
     userIdCodec =
-        S.int |> S.map UserId (\(UserId id) -> id)
+        S.int |> S.map UserId (\\(UserId id) -> id)
 
 Note that there's nothing preventing you from encoding Elm values that will map to some different value when you decode them.
 I recommend writing tests for Codecs that use `map` to make sure you get back the same Elm value you put in.
@@ -1617,7 +1660,7 @@ I recommend writing tests for Codecs that use `map` to make sure you get back th
 map : (a -> b) -> (b -> a) -> Codec e a -> Codec e b
 map fromBytes_ toBytes_ codec =
     mapHelper
-        (\value ->
+        (\\value ->
             case value of
                 Ok ok ->
                     fromBytes_ ok |> Ok
@@ -1632,9 +1675,9 @@ map fromBytes_ toBytes_ codec =
 mapHelper : (Result (Error e) a -> Result (Error e) b) -> (b -> a) -> Codec e a -> Codec e b
 mapHelper fromBytes_ toBytes_ codec =
     build
-        (\v -> toBytes_ v |> getEncoder codec)
+        (\\v -> toBytes_ v |> getEncoder codec)
         (getDecoder codec |> BD.map fromBytes_)
-        (\v -> toBytes_ v |> getJsonEncoder codec)
+        (\\v -> toBytes_ v |> getJsonEncoder codec)
         (getJsonDecoder codec |> JD.map fromBytes_)
 
 
@@ -1650,7 +1693,7 @@ mapHelper fromBytes_ toBytes_ codec =
     emailCodec =
         S.string
             |> S.mapValid
-                (\text ->
+                (\\text ->
                     case Email.fromString of
                         Just email ->
                             Ok email
@@ -1668,10 +1711,10 @@ I recommend writing tests for Codecs that use `mapValid` to make sure you get ba
 mapValid : (a -> Result e b) -> (b -> a) -> Codec e a -> Codec e b
 mapValid fromBytes_ toBytes_ codec =
     build
-        (\v -> toBytes_ v |> getEncoder codec)
+        (\\v -> toBytes_ v |> getEncoder codec)
         (getDecoder codec
             |> BD.map
-                (\value ->
+                (\\value ->
                     case value of
                         Ok ok ->
                             fromBytes_ ok |> Result.mapError CustomError
@@ -1680,10 +1723,10 @@ mapValid fromBytes_ toBytes_ codec =
                             Err err
                 )
         )
-        (\v -> toBytes_ v |> getJsonEncoder codec)
+        (\\v -> toBytes_ v |> getJsonEncoder codec)
         (getJsonDecoder codec
             |> JD.map
-                (\value ->
+                (\\value ->
                     case value of
                         Ok ok ->
                             fromBytes_ ok |> Result.mapError CustomError
@@ -1708,7 +1751,7 @@ mapError mapFunc codec =
 mapErrorHelper : (e -> a) -> Result (Error e) b -> Result (Error a) b
 mapErrorHelper mapFunc =
     Result.mapError
-        (\error ->
+        (\\error ->
             case error of
                 CustomError custom ->
                     mapFunc custom |> CustomError
@@ -1736,13 +1779,13 @@ mapErrorHelper mapFunc =
     -}
     badPeanoCodec : S.Codec Peano
     badPeanoCodec =
-        S.maybe badPeanoCodec |> S.map Peano (\(Peano a) -> a)
+        S.maybe badPeanoCodec |> S.map Peano (\\(Peano a) -> a)
 
     {-| Now the compiler is happy!
     -}
     goodPeanoCodec : S.Codec Peano
     goodPeanoCodec =
-        S.maybe (S.lazy (\() -> goodPeanoCodec)) |> S.map Peano (\(Peano a) -> a)
+        S.maybe (S.lazy (\\() -> goodPeanoCodec)) |> S.map Peano (\\(Peano a) -> a)
 
 **Warning:** This is not stack safe.
 
@@ -1754,7 +1797,9 @@ Be careful here, and test your codecs using elm-test with larger inputs than you
 lazy : (() -> Codec e a) -> Codec e a
 lazy f =
     build
-        (\value -> getEncoder (f ()) value)
-        (BD.succeed () |> BD.andThen (\() -> getDecoder (f ())))
-        (\value -> getJsonEncoder (f ()) value)
-        (JD.succeed () |> JD.andThen (\() -> getJsonDecoder (f ())))
+        (\\value -> getEncoder (f ()) value)
+        (BD.succeed () |> BD.andThen (\\() -> getDecoder (f ())))
+        (\\value -> getJsonEncoder (f ()) value)
+        (JD.succeed () |> JD.andThen (\\() -> getJsonDecoder (f ())))
+
+"""

@@ -1,34 +1,32 @@
-module Serialize exposing
-    ( encodeToJson, decodeFromJson, encodeToBytes, decodeFromBytes, encodeToString, decodeFromString
-    , Codec, Error(..)
+module SerializeV1 exposing
+    ( Codec, Error(..)
+    , decodeFromBytes, decodeFromString
+    , encodeToBytes, encodeToString
     , string, bool, float, int, unit, bytes, byte
     , maybe, list, array, dict, set, tuple, triple, result, enum
     , RecordCodec, record, field, finishRecord
     , CustomTypeCodec, customType, variant0, variant1, variant2, variant3, variant4, variant5, variant6, variant7, variant8, finishCustomType, VariantEncoder
     , map, mapValid, mapError
     , lazy
+    , decodeFromJson, encodeToJson
     )
 
 {-|
 
 
-# Serialization
-
-You have three options when encoding data. You can represent the data either as json, bytes, or a string.
-Here's some advice when choosing:
-
-  - If performance is important, use `encodeToJson` and `decodeFromJson`
-  - If space efficiency is important, use `encodeToBytes` and `decodeFromBytes`\*
-  - `encodeToString` and `decodeFromString` are good for URL safe strings but otherwise one of the other choices is probably better.
-
-\*`encodeToJson` is more compact when encoding integers with 6 or fewer digits. You may want to try both `encodeToBytes` and `encodeToJson` and see which is better for your use case.
-
-@docs encodeToJson, decodeFromJson, encodeToBytes, decodeFromBytes, encodeToString, decodeFromString
-
-
 # Definition
 
 @docs Codec, Error
+
+
+# Decode
+
+@docs decodeFromBytes, decodeFromString
+
+
+# Encode
+
+@docs encodeToBytes, encodeToString
 
 
 # Primitives
@@ -180,8 +178,6 @@ decodeFromString codec base64 =
             Err DataCorrupted
 
 
-{-| Run a `Codec` to turn a json value encoded with `encodeToJson` into an Elm value.
--}
 decodeFromJson : Codec e a -> JE.Value -> Result (Error e) a
 decodeFromJson codec json =
     let
@@ -288,8 +284,6 @@ encodeToString codec =
     encodeToBytes codec >> replaceBase64Chars
 
 
-{-| Convert an Elm value into json data.
--}
 encodeToJson : Codec e a -> a -> JE.Value
 encodeToJson codec value =
     JE.list
