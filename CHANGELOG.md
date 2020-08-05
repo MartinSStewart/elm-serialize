@@ -12,3 +12,7 @@
 
 * Added Codec for `()` (aka `Unit`)
 * Fixed mistakes in documentation
+
+## 1.2.0
+
+* Added `encodeToJson` and `decodeFromJson`
