@@ -52,7 +52,7 @@ type Semaphore
     | Yellow Float
     | Green
 
-semaphoreCodec : S.Codec Semaphore
+semaphoreCodec : S.Codec e Semaphore
 semaphoreCodec =
     S.customType
         (\redEncoder yellowEncoder greenEncoder value ->
@@ -84,12 +84,11 @@ import Serialize as S
 Char.toUpper 'ß' --> 'SS'
     |> S.encodeToBytes hypotheticalCharCodec
     |> S.decodeFromBytes --> Ok 'S'
-    
 ```
 
 So the short of it is, it's not possible to create a `Char` that won't sometimes mess up your data when decoding.
 
-## How do I change my codecs and still be able to decode old data?
+## How do I change my `Codec`s and still be able to decode old data?
 
 First let's cover what counts as a breaking change for a Codec.
 
@@ -110,7 +109,7 @@ type Semaphore
     | Green
     | Rainbow 
 
-S.custom
+S.customType
     (\redEncoder yellowEncoder greenEncoder rainbowEncoder value ->
         case value of
             Red i s b ->
@@ -130,7 +129,7 @@ S.custom
     |> S.variant0 Green
     -- We can safely add the new variant here at the end.
     |> S.variant0 Rainbow
-    |> S.finishCustom
+    |> S.finishCustomType
 ```
 The example above will still decode anything encoded with the semaphoreCodec in the [custom types example](#writing-codecs-for-custom-types)
 
@@ -185,56 +184,53 @@ import Serialize as S
 type alias GpsCoordinate =
     ( Float, Float )
 
+type GpsCoordinateVersions
+    = V1GpsCoordinate String -- Old way of storing GPS coordinates
+    | V2GpsCoordinate GpsCoordinate -- New better way
 
-type GpsVersions
-    = GpsV1 String -- Old way of storing GPS coordinates
-    | GpsV2 GpsCoordinate -- New better way
-
-gpsV1Codec : S.Codec e String
-gpsV1Codec =
+gpsCoordinateV1Codec =
     S.string
 
-gpsV2Codec : S.Codec e GpsCoordinate
-gpsV2Codec =
+gpsCoordinateV2Codec =
     S.tuple S.float S.float
 
-gpsCodec : S.Codec e GpsCoordinate
-gpsCodec =
+gpsCoordinateCodec : S.Codec e GpsCoordinate
+gpsCoordinateCodec =
     S.customType
-        (\gpsV1Encoder gpsV2Encoder value ->
+        (\gpsCoordinateV1Encoder gpsCoordinateV2Encoder value ->
             case value of
-                GpsV1 text ->
-                    gpsV1Encoder text
+                V1GpsCoordinate text ->
+                    gpsCoordinateV1Encoder text
 
-                GpsV2 tuple ->
-                    gpsV2Encoder tuple
+                V2GpsCoordinate tuple ->
+                    gpsCoordinateV2Encoder tuple
         )
-        |> S.variant1 GpsV1 gpsV1Codec
+        |> S.variant1 V1GpsCoordinate v1GpsCoordinateCodec
         -- We append our new GPS codec. This is not a breaking change.
-        |> S.variant1 GpsV2 gpsV2Codec
+        |> S.variant1 V2GpsCoordinate v2GpsCoordinateCodec
         |> S.finishCustomType
         |> S.map
             (\value ->
                 case value of
-                    GpsV1 text ->
+                    V1GpsCoordinate text ->
                         -- After we've decoded an old GPS coordinate, we need to convert it to the new format.
-                        convertGpsV1ToGpsCoordinate text
+                        v1GpsToGpsCoordinate text
 
-                    GpsV2 tuple ->
+                    V2GpsCoordinate tuple ->
                         -- No conversion needed here
                         tuple
             )
-            (\value -> GpsV2 value)
+            V2GpsCoordinate
 
-convertGpsV1ToGpsCoordinate : String -> (Float, Float)
-convertGpsV1ToGpsCoordinate =
+v1GpsToGpsCoordinate : String -> GpsCoordinate
+v1GpsToGpsCoordinate =
     Debug.todo "Add the conversion code"
 ```
 If we decide to make more changes to our GPS coordinate, we can safely just append more variants to act as versions.
 The crucial thing is that we had this versioning system set up from the beginning. If we had just written 
 ```elm
-gpsCodec : GpsCoordinate
-gpsCodec = S.string
+gpsCoordinateCodec : S.Codec e GpsCoordinate
+gpsCoordinateCodec = S.string
 ``` 
 then we wouldn't be able to add a new version later.
 
