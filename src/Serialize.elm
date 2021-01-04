@@ -459,9 +459,9 @@ char =
 
     import Serialize as S
 
-    maybeIntCodec : S.Codec (Maybe Int)
+    maybeIntCodec : S.Codec e (Maybe Int)
     maybeIntCodec =
-        S.Maybe S.Int
+        S.maybe S.int
 
 -}
 maybe : Codec e a -> Codec e (Maybe a)
@@ -484,7 +484,7 @@ maybe justCodec =
 
     import Serialize as S
 
-    listOfStringsCodec : S.Codec (List String)
+    listOfStringsCodec : S.Codec e (List String)
     listOfStringsCodec =
         S.list S.string
 
@@ -567,7 +567,7 @@ array codec =
     type alias Name =
         String
 
-    peoplesAgeCodec : S.Codec (Dict Name Int)
+    peoplesAgeCodec : S.Codec e (Dict Name Int)
     peoplesAgeCodec =
         S.dict S.string S.int
 
@@ -600,7 +600,7 @@ unit =
 
     import Serialize as S
 
-    pointCodec : S.Codec ( Float, Float )
+    pointCodec : S.Codec e ( Float, Float )
     pointCodec =
         S.tuple S.float S.float
 
@@ -617,7 +617,7 @@ tuple codecFirst codecSecond =
 
     import Serialize as S
 
-    pointCodec : S.Codec ( Float, Float, Float )
+    pointCodec : S.Codec e ( Float, Float, Float )
     pointCodec =
         S.tuple S.float S.float S.float
 
@@ -698,7 +698,7 @@ This is useful if you have a small integer you want to serialize and not use up 
         , blue : Int
         }
 
-    color : S.Codec Color
+    color : S.Codec e Color
     color =
         Color.record Color
             |> S.field .red byte
@@ -733,7 +733,7 @@ If you try to encode an item that isn't in the list then the first item is defau
         | Saturday
         | Sunday
 
-    daysOfWeekCodec : S.Codec DaysOfWeek
+    daysOfWeekCodec : S.Codec e DaysOfWeek
     daysOfWeekCodec =
         S.enum Monday [ Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday ]
 
@@ -824,7 +824,7 @@ type RecordCodec e a b
         , y : Int
         }
 
-    pointCodec : S.Codec Point
+    pointCodec : S.Codec e Point
     pointCodec =
         S.record Point
             -- Note that adding, removing, or reordering fields will prevent you from decoding any data you've previously encoded.
@@ -923,9 +923,9 @@ You need to pass a pattern matching function, see the FAQ for details.
         | Yellow Float
         | Green
 
-    semaphoreCodec : S.Codec Semaphore
+    semaphoreCodec : S.Codec e Semaphore
     semaphoreCodec =
-        S.custom
+        S.customType
             (\redEncoder yellowEncoder greenEncoder value ->
                 case value of
                     Red i s b ->
@@ -942,7 +942,7 @@ You need to pass a pattern matching function, see the FAQ for details.
             |> S.variant1 Yellow S.float
             |> S.variant0 Green
             -- It's safe to add new variants here later though
-            |> S.finishCustom
+            |> S.finishCustomType
 
 -}
 customType : match -> CustomTypeCodec { youNeedAtLeastOneVariant : () } e match value
@@ -1043,7 +1043,10 @@ variant1 ctor m1 =
         (JD.map (result1 ctor) (JD.index 1 (getJsonDecoder m1)))
 
 
-result1 : (value -> a) -> Result error value -> Result error a
+result1 :
+    (value -> a)
+    -> Result error value
+    -> Result error a
 result1 ctor value =
     case value of
         Ok ok ->
@@ -1087,7 +1090,11 @@ variant2 ctor m1 m2 =
         )
 
 
-result2 : (value -> a -> b) -> Result error value -> Result error a -> Result error b
+result2 :
+    (value -> a -> b)
+    -> Result error value
+    -> Result error a
+    -> Result error b
 result2 ctor v1 v2 =
     case ( v1, v2 ) of
         ( Ok ok1, Ok ok2 ) ->
@@ -1139,7 +1146,12 @@ variant3 ctor m1 m2 m3 =
         )
 
 
-result3 : (value -> a -> b -> c) -> Result error value -> Result error a -> Result error b -> Result error c
+result3 :
+    (value -> a -> b -> c)
+    -> Result error value
+    -> Result error a
+    -> Result error b
+    -> Result error c
 result3 ctor v1 v2 v3 =
     case ( v1, v2, v3 ) of
         ( Ok ok1, Ok ok2, Ok ok3 ) ->
@@ -1199,7 +1211,13 @@ variant4 ctor m1 m2 m3 m4 =
         )
 
 
-result4 : (value -> a -> b -> c -> d) -> Result error value -> Result error a -> Result error b -> Result error c -> Result error d
+result4 :
+    (value -> a -> b -> c -> d)
+    -> Result error value
+    -> Result error a
+    -> Result error b
+    -> Result error c
+    -> Result error d
 result4 ctor v1 v2 v3 v4 =
     case T4 v1 v2 v3 v4 of
         T4 (Ok ok1) (Ok ok2) (Ok ok3) (Ok ok4) ->
@@ -1267,6 +1285,14 @@ variant5 ctor m1 m2 m3 m4 m5 =
         )
 
 
+result5 : 
+    (value -> a -> b -> c -> d -> e)
+    -> Result error value
+    -> Result error a
+    -> Result error b
+    -> Result error c
+    -> Result error d
+    -> Result error e
 result5 ctor v1 v2 v3 v4 v5 =
     case T5 v1 v2 v3 v4 v5 of
         T5 (Ok ok1) (Ok ok2) (Ok ok3) (Ok ok4) (Ok ok5) ->
@@ -1346,7 +1372,14 @@ variant6 ctor m1 m2 m3 m4 m5 m6 =
         )
 
 
-result6 : (value -> a -> b -> c -> d -> e -> f) -> Result error value -> Result error a -> Result error b -> Result error c -> ( Result error d, Result error e ) -> Result error f
+result6 :
+    (value -> a -> b -> c -> d -> e -> f)
+    -> Result error value
+    -> Result error a
+    -> Result error b
+    -> Result error c
+    -> ( Result error d, Result error e )
+    -> Result error f
 result6 ctor v1 v2 v3 v4 ( v5, v6 ) =
     case T6 v1 v2 v3 v4 v5 v6 of
         T6 (Ok ok1) (Ok ok2) (Ok ok3) (Ok ok4) (Ok ok5) (Ok ok6) ->
@@ -1438,7 +1471,14 @@ variant7 ctor m1 m2 m3 m4 m5 m6 m7 =
         )
 
 
-result7 : (value -> a -> b -> c -> d -> e -> f -> g) -> Result error value -> Result error a -> Result error b -> ( Result error c, Result error d ) -> ( Result error e, Result error f ) -> Result error g
+result7 :
+    (value -> a -> b -> c -> d -> e -> f -> g)
+    -> Result error value
+    -> Result error a
+    -> Result error b
+    -> ( Result error c, Result error d )
+    -> ( Result error e, Result error f )
+    -> Result error g
 result7 ctor v1 v2 v3 ( v4, v5 ) ( v6, v7 ) =
     case T7 v1 v2 v3 v4 v5 v6 v7 of
         T7 (Ok ok1) (Ok ok2) (Ok ok3) (Ok ok4) (Ok ok5) (Ok ok6) (Ok ok7) ->
@@ -1542,7 +1582,14 @@ variant8 ctor m1 m2 m3 m4 m5 m6 m7 m8 =
         )
 
 
-result8 : (value -> a -> b -> c -> d -> e -> f -> g -> h) -> Result error value -> Result error a -> ( Result error b, Result error c ) -> ( Result error d, Result error e ) -> ( Result error f, Result error g ) -> Result error h
+result8 :
+    (value -> a -> b -> c -> d -> e -> f -> g -> h)
+    -> Result error value
+    -> Result error a
+    -> ( Result error b, Result error c )
+    -> ( Result error d, Result error e )
+    -> ( Result error f, Result error g )
+    -> Result error h
 result8 ctor v1 v2 ( v3, v4 ) ( v5, v6 ) ( v7, v8 ) =
     case T8 v1 v2 v3 v4 v5 v6 v7 v8 of
         T8 (Ok ok1) (Ok ok2) (Ok ok3) (Ok ok4) (Ok ok5) (Ok ok6) (Ok ok7) (Ok ok8) ->
@@ -1605,7 +1652,7 @@ finishCustomType (CustomTypeCodec am) =
     type UserId
         = UserId Int
 
-    userIdCodec : S.Codec UserId
+    userIdCodec : S.Codec e UserId
     userIdCodec =
         S.int |> S.map UserId (\(UserId id) -> id)
 
@@ -1734,13 +1781,13 @@ mapErrorHelper mapFunc =
 
     {-| The compiler will complain that this function causes an infinite loop.
     -}
-    badPeanoCodec : S.Codec Peano
+    badPeanoCodec : S.Codec e Peano
     badPeanoCodec =
         S.maybe badPeanoCodec |> S.map Peano (\(Peano a) -> a)
 
     {-| Now the compiler is happy!
     -}
-    goodPeanoCodec : S.Codec Peano
+    goodPeanoCodec : S.Codec e Peano
     goodPeanoCodec =
         S.maybe (S.lazy (\() -> goodPeanoCodec)) |> S.map Peano (\(Peano a) -> a)
 
