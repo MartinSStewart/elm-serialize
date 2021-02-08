@@ -84,7 +84,7 @@ import Toop exposing (T4(..), T5(..), T6(..), T7(..), T8(..))
 type Codec e a
     = Codec
         { encoder : a -> BE.Encoder
-        , decoder : Decoder (Result (Error e) a)
+        , decoder : BD.Decoder (Result (Error e) a)
         , jsonEncoder : a -> JE.Value
         , jsonDecoder : JD.Decoder (Result (Error e) a)
         }
@@ -116,12 +116,6 @@ version =
 -- DECODE
 
 
-{-| Describes how to turn a sequence of bytes into a nice Elm value.
--}
-type alias Decoder a =
-    BD.Decoder a
-
-
 endian : Bytes.Endianness
 endian =
     Bytes.BE
@@ -129,8 +123,8 @@ endian =
 
 {-| Extracts the `Decoder` contained inside the `Codec`.
 -}
-getDecoder : Codec e a -> Decoder (Result (Error e) a)
-getDecoder (Codec m) =
+getBytesDecoder : Codec e a -> BD.Decoder (Result (Error e) a)
+getBytesDecoder (Codec m) =
     m.decoder
 
 
@@ -154,7 +148,7 @@ decodeFromBytes codec bytes_ =
                             Err DataCorrupted |> BD.succeed
 
                         else if value == version then
-                            getDecoder codec
+                            getBytesDecoder codec
 
                         else
                             Err SerializerOutOfDate |> BD.succeed
@@ -327,7 +321,7 @@ replaceForUrl =
 
 build :
     (a -> BE.Encoder)
-    -> Decoder (Result (Error e) a)
+    -> BD.Decoder (Result (Error e) a)
     -> (a -> JE.Value)
     -> JD.Decoder (Result (Error e) a)
     -> Codec e a
@@ -495,7 +489,7 @@ list codec =
         (listEncode (getEncoder codec))
         (BD.unsignedInt32 endian
             |> BD.andThen
-                (\length -> BD.loop ( length, [] ) (listStep (getDecoder codec)))
+                (\length -> BD.loop ( length, [] ) (listStep (getBytesDecoder codec)))
         )
         (JE.list (getJsonEncoder codec))
         (JD.list (getJsonDecoder codec)
@@ -517,16 +511,6 @@ list codec =
         )
 
 
-isError : Result e a -> Bool
-isError result_ =
-    case result_ of
-        Ok _ ->
-            False
-
-        Err _ ->
-            True
-
-
 listEncode : (a -> BE.Encoder) -> List a -> BE.Encoder
 listEncode encoder_ list_ =
     list_
@@ -535,7 +519,7 @@ listEncode encoder_ list_ =
         |> BE.sequence
 
 
-listStep : BD.Decoder (Result (Error e) a) -> ( Int, List a ) -> Decoder (BD.Step ( Int, List a ) (Result (Error e) (List a)))
+listStep : BD.Decoder (Result (Error e) a) -> ( Int, List a ) -> BD.Decoder (BD.Step ( Int, List a ) (Result (Error e) (List a)))
 listStep decoder_ ( n, xs ) =
     if n <= 0 then
         BD.succeed (BD.Done (xs |> List.reverse |> Ok))
@@ -808,7 +792,7 @@ findIndexHelp index predicate list_ =
 type RecordCodec e a b
     = RecordCodec
         { encoder : a -> List BE.Encoder
-        , decoder : Decoder (Result (Error e) b)
+        , decoder : BD.Decoder (Result (Error e) b)
         , jsonEncoder : a -> List JE.Value
         , jsonDecoder : JD.Decoder (Result (Error e) b)
         , fieldIndex : Int
@@ -864,7 +848,7 @@ field getter codec (RecordCodec recordCodec) =
                             Err err
                 )
                 recordCodec.decoder
-                (getDecoder codec)
+                (getBytesDecoder codec)
         , jsonEncoder = \v -> (getJsonEncoder codec <| getter v) :: recordCodec.jsonEncoder v
         , jsonDecoder =
             JD.map2
@@ -907,7 +891,7 @@ type CustomTypeCodec a e match v
     = CustomTypeCodec
         { match : match
         , jsonMatch : match
-        , decoder : Int -> Decoder (Result (Error e) v) -> Decoder (Result (Error e) v)
+        , decoder : Int -> BD.Decoder (Result (Error e) v) -> BD.Decoder (Result (Error e) v)
         , jsonDecoder : Int -> JD.Decoder (Result (Error e) v) -> JD.Decoder (Result (Error e) v)
         , idCounter : Int
         }
@@ -964,7 +948,7 @@ type VariantEncoder
 variant :
     ((List BE.Encoder -> VariantEncoder) -> a)
     -> ((List JE.Value -> VariantEncoder) -> a)
-    -> Decoder (Result (Error error) v)
+    -> BD.Decoder (Result (Error error) v)
     -> JD.Decoder (Result (Error error) v)
     -> CustomTypeCodec z error (a -> b) v
     -> CustomTypeCodec () error b v
@@ -984,7 +968,7 @@ variant matchPiece matchJsonPiece decoderPiece jsonDecoderPiece (CustomTypeCodec
             )
                 |> VariantEncoder
 
-        decoder_ : Int -> Decoder (Result (Error error) v) -> Decoder (Result (Error error) v)
+        decoder_ : Int -> BD.Decoder (Result (Error error) v) -> BD.Decoder (Result (Error error) v)
         decoder_ tag orElse =
             if tag == am.idCounter then
                 decoderPiece
@@ -1039,7 +1023,7 @@ variant1 ctor m1 =
                 [ getJsonEncoder m1 v
                 ]
         )
-        (BD.map (result1 ctor) (getDecoder m1))
+        (BD.map (result1 ctor) (getBytesDecoder m1))
         (JD.map (result1 ctor) (JD.index 1 (getJsonDecoder m1)))
 
 
@@ -1080,8 +1064,8 @@ variant2 ctor m1 m2 =
         )
         (BD.map2
             (result2 ctor)
-            (getDecoder m1)
-            (getDecoder m2)
+            (getBytesDecoder m1)
+            (getBytesDecoder m2)
         )
         (JD.map2
             (result2 ctor)
@@ -1134,9 +1118,9 @@ variant3 ctor m1 m2 m3 =
         )
         (BD.map3
             (result3 ctor)
-            (getDecoder m1)
-            (getDecoder m2)
-            (getDecoder m3)
+            (getBytesDecoder m1)
+            (getBytesDecoder m2)
+            (getBytesDecoder m3)
         )
         (JD.map3
             (result3 ctor)
@@ -1197,10 +1181,10 @@ variant4 ctor m1 m2 m3 m4 =
         )
         (BD.map4
             (result4 ctor)
-            (getDecoder m1)
-            (getDecoder m2)
-            (getDecoder m3)
-            (getDecoder m4)
+            (getBytesDecoder m1)
+            (getBytesDecoder m2)
+            (getBytesDecoder m3)
+            (getBytesDecoder m4)
         )
         (JD.map4
             (result4 ctor)
@@ -1269,11 +1253,11 @@ variant5 ctor m1 m2 m3 m4 m5 =
         )
         (BD.map5
             (result5 ctor)
-            (getDecoder m1)
-            (getDecoder m2)
-            (getDecoder m3)
-            (getDecoder m4)
-            (getDecoder m5)
+            (getBytesDecoder m1)
+            (getBytesDecoder m2)
+            (getBytesDecoder m3)
+            (getBytesDecoder m4)
+            (getBytesDecoder m5)
         )
         (JD.map5
             (result5 ctor)
@@ -1285,7 +1269,7 @@ variant5 ctor m1 m2 m3 m4 m5 =
         )
 
 
-result5 : 
+result5 :
     (value -> a -> b -> c -> d -> e)
     -> Result error value
     -> Result error a
@@ -1350,13 +1334,13 @@ variant6 ctor m1 m2 m3 m4 m5 m6 =
         )
         (BD.map5
             (result6 ctor)
-            (getDecoder m1)
-            (getDecoder m2)
-            (getDecoder m3)
-            (getDecoder m4)
+            (getBytesDecoder m1)
+            (getBytesDecoder m2)
+            (getBytesDecoder m3)
+            (getBytesDecoder m4)
             (BD.map2 Tuple.pair
-                (getDecoder m5)
-                (getDecoder m6)
+                (getBytesDecoder m5)
+                (getBytesDecoder m6)
             )
         )
         (JD.map5
@@ -1443,16 +1427,16 @@ variant7 ctor m1 m2 m3 m4 m5 m6 m7 =
         )
         (BD.map5
             (result7 ctor)
-            (getDecoder m1)
-            (getDecoder m2)
-            (getDecoder m3)
+            (getBytesDecoder m1)
+            (getBytesDecoder m2)
+            (getBytesDecoder m3)
             (BD.map2 Tuple.pair
-                (getDecoder m4)
-                (getDecoder m5)
+                (getBytesDecoder m4)
+                (getBytesDecoder m5)
             )
             (BD.map2 Tuple.pair
-                (getDecoder m6)
-                (getDecoder m7)
+                (getBytesDecoder m6)
+                (getBytesDecoder m7)
             )
         )
         (JD.map5
@@ -1548,19 +1532,19 @@ variant8 ctor m1 m2 m3 m4 m5 m6 m7 m8 =
         )
         (BD.map5
             (result8 ctor)
-            (getDecoder m1)
-            (getDecoder m2)
+            (getBytesDecoder m1)
+            (getBytesDecoder m2)
             (BD.map2 Tuple.pair
-                (getDecoder m3)
-                (getDecoder m4)
+                (getBytesDecoder m3)
+                (getBytesDecoder m4)
             )
             (BD.map2 Tuple.pair
-                (getDecoder m5)
-                (getDecoder m6)
+                (getBytesDecoder m5)
+                (getBytesDecoder m6)
             )
             (BD.map2 Tuple.pair
-                (getDecoder m7)
-                (getDecoder m8)
+                (getBytesDecoder m7)
+                (getBytesDecoder m8)
             )
         )
         (JD.map5
@@ -1680,7 +1664,7 @@ mapHelper : (Result (Error e) a -> Result (Error e) b) -> (b -> a) -> Codec e a 
 mapHelper fromBytes_ toBytes_ codec =
     build
         (\v -> toBytes_ v |> getEncoder codec)
-        (getDecoder codec |> BD.map fromBytes_)
+        (getBytesDecoder codec |> BD.map fromBytes_)
         (\v -> toBytes_ v |> getJsonEncoder codec)
         (getJsonDecoder codec |> JD.map fromBytes_)
 
@@ -1716,7 +1700,7 @@ mapValid : (a -> Result e b) -> (b -> a) -> Codec e a -> Codec e b
 mapValid fromBytes_ toBytes_ codec =
     build
         (\v -> toBytes_ v |> getEncoder codec)
-        (getDecoder codec
+        (getBytesDecoder codec
             |> BD.map
                 (\value ->
                     case value of
@@ -1747,7 +1731,7 @@ mapError : (e1 -> e2) -> Codec e1 a -> Codec e2 a
 mapError mapFunc codec =
     build
         (getEncoder codec)
-        (getDecoder codec |> BD.map (mapErrorHelper mapFunc))
+        (getBytesDecoder codec |> BD.map (mapErrorHelper mapFunc))
         (getJsonEncoder codec)
         (getJsonDecoder codec |> JD.map (mapErrorHelper mapFunc))
 
@@ -1802,6 +1786,6 @@ lazy : (() -> Codec e a) -> Codec e a
 lazy f =
     build
         (\value -> getEncoder (f ()) value)
-        (BD.succeed () |> BD.andThen (\() -> getDecoder (f ())))
+        (BD.succeed () |> BD.andThen (\() -> getBytesDecoder (f ())))
         (\value -> getJsonEncoder (f ()) value)
         (JD.succeed () |> JD.andThen (\() -> getJsonDecoder (f ())))
