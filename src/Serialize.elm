@@ -1682,7 +1682,7 @@ mapHelper fromBytes_ toBytes_ codec =
         S.string
             |> S.mapValid
                 (\text ->
-                    case Email.fromString of
+                    case Email.fromString text of
                         Just email ->
                             Ok email
 

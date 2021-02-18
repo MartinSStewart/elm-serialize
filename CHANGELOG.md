@@ -16,3 +16,7 @@
 ## 1.2.0
 
 * Added `encodeToJson` and `decodeFromJson`
+
+## 1.2.1 - 1.2.3
+
+* Fixed various mistakes in the documentation
