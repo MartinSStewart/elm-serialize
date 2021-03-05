@@ -691,7 +691,7 @@ This is useful if you have a small integer you want to serialize and not use up 
             |> S.finishRecord
 
 **Warning:** values greater than 255 or less than 0 will wrap around.
-So if you encode -1 you'll get back 255 and if you encode 257 you'll get back 2.
+So if you encode -1 you'll get back 255 and if you encode 257 you'll get back 1.
 
 -}
 byte : Codec e Int
