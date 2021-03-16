@@ -21,7 +21,4 @@ import Review.Rule exposing (Rule)
 config : List Rule
 config =
     [ NoUnused.Dependencies.rule
-    , NoUnused.Parameters.rule
-    , NoUnused.Patterns.rule
-    , NoUnused.Variables.rule
     ]
