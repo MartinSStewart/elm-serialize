@@ -11,6 +11,6 @@
     "elm-doc-preview": "^5.0.3",
     "elm-format": "^0.8.2",
     "elm-review": "^2.2.6",
-    "elm-test": "^0.19.1"
+    "elm-test": "^0.19.1-revision6"
   }
 }
