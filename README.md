@@ -1,7 +1,7 @@
 # elm-serialize
 
 Quickly and reliably write code to handle serialization of Elm data structures. 
-This is done via `Codec`s which automatically create both the encoder and decoder ensuring that they don't get out of sync with eachother.
+This is done via `Codec`s which automatically create both the encoder and decoder ensuring that they don't get out of sync with each other.
 
 ### What elm-serialize is good for?
 - Sparing you from having to write both encoders and decoders
