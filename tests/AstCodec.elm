@@ -225,6 +225,7 @@ function =
         |> S.finishRecord
 
 
+signature : Codec e Signature
 signature =
     S.record Signature
         |> S.field .name (node S.string)

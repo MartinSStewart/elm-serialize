@@ -36,7 +36,7 @@ suite =
                         S.encodeToString S.bytes bytes
                 in
                 expected |> Url.percentEncode |> Expect.equal expected
-        , describe "Serizlier version" serializerVersionTests
+        , describe "Serializer version" serializerVersionTests
         , Test.fuzz Fuzz.float "Json round trip float" <|
             \value -> String.fromFloat value |> String.toFloat |> Expect.equal (Just value)
         ]
@@ -47,6 +47,7 @@ roundtrips fuzzer codec codecV1 =
     fuzz fuzzer "is a roundtrip" (roundtripHelper codec codecV1)
 
 
+roundtripHelper : Codec e a -> SerializeV1.Codec e1 a -> a -> Expect.Expectation
 roundtripHelper codec codecV1 value =
     Expect.all
         [ S.encodeToBytes codec >> S.decodeFromBytes codec >> Expect.equal (Ok value)
@@ -135,10 +136,12 @@ containersTests =
     ]
 
 
+maxRangeIntFuzz : Fuzzer Int
 maxRangeIntFuzz =
     Fuzz.intRange Basics.Extra.minSafeInteger Basics.Extra.maxSafeInteger
 
 
+charFuzz : Fuzzer Char
 charFuzz =
     [ '😀', 'ß', Char.toUpper 'ß', 'a', '吧', '吗', '\t' ]
         |> List.map Fuzz.constant
@@ -519,6 +522,7 @@ bimapTests =
 
 {-| Volume must be between 0 and 1.
 -}
+volumeCodec : Codec String Float
 volumeCodec =
     S.float
         |> S.mapValid
@@ -532,6 +536,7 @@ volumeCodec =
             (\volume -> volume)
 
 
+volumeCodecV1 : SerializeV1.Codec String Float
 volumeCodecV1 =
     SerializeV1.float
         |> SerializeV1.mapValid
@@ -725,18 +730,22 @@ type DaysOfWeek
     | Sunday
 
 
+daysOfWeekCodec : Codec e DaysOfWeek
 daysOfWeekCodec =
     S.enum Monday [ Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday ]
 
 
+daysOfWeekCodecV1 : SerializeV1.Codec e DaysOfWeek
 daysOfWeekCodecV1 =
     SerializeV1.enum Monday [ Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday ]
 
 
+badDaysOfWeekCodec : Codec e DaysOfWeek
 badDaysOfWeekCodec =
     S.enum Monday []
 
 
+daysOfWeekFuzz : Fuzzer DaysOfWeek
 daysOfWeekFuzz =
     [ Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday ]
         |> List.map Fuzz.constant
@@ -755,6 +764,7 @@ enumTest =
     ]
 
 
+serializerVersionTests : List Test
 serializerVersionTests =
     [ test "DataCorrupted error if version is 0" <|
         \_ ->

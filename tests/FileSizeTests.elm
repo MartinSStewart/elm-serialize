@@ -326,7 +326,7 @@ encodeToBytes codec value =
 
 {-| Convert an Elm value into a string. This string contains only url safe characters, so you can do the following:
 
-    import Serlialize as S
+    import Serialize as S
 
     myUrl =
         "www.mywebsite.com/?data=" ++ S.encodeToString S.float 1234
