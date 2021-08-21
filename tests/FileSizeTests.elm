@@ -53,7 +53,10 @@ tests =
 
 code =
     Elm.Parser.parse <|
-        """module Serialize exposing
+        String.replace
+            "\u{000D}"
+            ""
+            """module Serialize exposing
     ( Codec, Error(..)
     , decodeFromBytes, decodeFromString
     , encodeToBytes, encodeToString
