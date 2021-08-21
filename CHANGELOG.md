@@ -20,3 +20,11 @@
 ## 1.2.1 - 1.2.4
 
 * Fixed various mistakes in the documentation
+
+## 1.2.5
+
+* Remove unused dependencies
+
+## 1.2.6
+
+* Fix more mistakes in the documentation
