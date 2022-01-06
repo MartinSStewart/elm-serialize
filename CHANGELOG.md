@@ -28,3 +28,7 @@
 ## 1.2.6
 
 * Fix more mistakes in the documentation
+
+## 1.3.0
+
+* Add getJsonDecoder function

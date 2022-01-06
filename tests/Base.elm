@@ -6,6 +6,7 @@ import Bytes.Encode
 import Dict
 import Expect
 import Fuzz exposing (Fuzzer)
+import Json.Decode
 import Serialize as S exposing (Codec)
 import SerializeV1
 import Set
@@ -53,6 +54,7 @@ roundtripHelper codec codecV1 value =
         [ S.encodeToBytes codec >> S.decodeFromBytes codec >> Expect.equal (Ok value)
         , S.encodeToString codec >> S.decodeFromString codec >> Expect.equal (Ok value)
         , S.encodeToJson codec >> S.decodeFromJson codec >> Expect.equal (Ok value)
+        , S.encodeToJson codec >> Json.Decode.decodeValue (S.getJsonDecoder (always "") codec) >> Expect.equal (Ok value)
         , SerializeV1.encodeToBytes codecV1 >> S.decodeFromBytes codec >> Expect.equal (Ok value)
         , SerializeV1.encodeToString codecV1 >> S.decodeFromString codec >> Expect.equal (Ok value)
         ]

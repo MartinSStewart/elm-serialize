@@ -1,5 +1,5 @@
 module Serialize exposing
-    ( encodeToJson, decodeFromJson, encodeToBytes, decodeFromBytes, encodeToString, decodeFromString
+    ( encodeToJson, decodeFromJson, encodeToBytes, decodeFromBytes, encodeToString, decodeFromString, getJsonDecoder
     , Codec, Error(..)
     , string, bool, float, int, unit, bytes, byte
     , maybe, list, array, dict, set, tuple, triple, result, enum
@@ -23,7 +23,7 @@ Here's some advice when choosing:
 
 \*`encodeToJson` is more compact when encoding integers with 6 or fewer digits. You may want to try both `encodeToBytes` and `encodeToJson` and see which is better for your use case.
 
-@docs encodeToJson, decodeFromJson, encodeToBytes, decodeFromBytes, encodeToString, decodeFromString
+@docs encodeToJson, decodeFromJson, encodeToBytes, decodeFromBytes, encodeToString, decodeFromString, getJsonDecoder
 
 
 # Definition
@@ -123,15 +123,15 @@ endian =
 
 {-| Extracts the `Decoder` contained inside the `Codec`.
 -}
-getBytesDecoder : Codec e a -> BD.Decoder (Result (Error e) a)
-getBytesDecoder (Codec m) =
+getBytesDecoderHelper : Codec e a -> BD.Decoder (Result (Error e) a)
+getBytesDecoderHelper (Codec m) =
     m.decoder
 
 
 {-| Extracts the json `Decoder` contained inside the `Codec`.
 -}
-getJsonDecoder : Codec e a -> JD.Decoder (Result (Error e) a)
-getJsonDecoder (Codec m) =
+getJsonDecoderHelper : Codec e a -> JD.Decoder (Result (Error e) a)
+getJsonDecoderHelper (Codec m) =
     m.jsonDecoder
 
 
@@ -148,7 +148,7 @@ decodeFromBytes codec bytes_ =
                             Err DataCorrupted |> BD.succeed
 
                         else if value == version then
-                            getBytesDecoder codec
+                            getBytesDecoderHelper codec
 
                         else
                             Err SerializerOutOfDate |> BD.succeed
@@ -160,6 +160,34 @@ decodeFromBytes codec bytes_ =
 
         Nothing ->
             Err DataCorrupted
+
+
+
+--{-| Get the decoder from a `Codec` which you can use inside a elm/bytes decoder. Note that if you do this, you lose any error information that might have been returned.
+---}
+--getBytesDecoder : Codec e a -> BD.Decoder a
+--getBytesDecoder codec =
+--    BD.unsignedInt8
+--        |> BD.andThen
+--            (\value ->
+--                if value <= 0 then
+--                    BD.fail
+--
+--                else if value == version then
+--                    getBytesDecoderHelper codec
+--                        |> BD.andThen
+--                            (\result_ ->
+--                                case result_ of
+--                                    Ok ok ->
+--                                        BD.succeed ok
+--
+--                                    Err _ ->
+--                                        BD.fail
+--                            )
+--
+--                else
+--                    BD.fail
+--            )
 
 
 {-| Run a `Codec` to turn a String encoded with `encodeToString` into an Elm value.
@@ -187,7 +215,7 @@ decodeFromJson codec json =
                             Err DataCorrupted |> JD.succeed
 
                         else if value == version then
-                            JD.index 1 (getJsonDecoder codec)
+                            JD.index 1 (getJsonDecoderHelper codec)
 
                         else
                             Err SerializerOutOfDate |> JD.succeed
@@ -199,6 +227,47 @@ decodeFromJson codec json =
 
         Err _ ->
             Err DataCorrupted
+
+
+{-| Get the decoder from a `Codec` which you can use inside a elm/json decoder.
+
+    import Json.Decode
+    import Serialize
+
+    type alias Point =
+        { x : Float, y : Float }
+
+    pointCodec : Serialize.Codec e Point
+    pointCodec =
+        Serialize.record Point
+            |> Serialize.field .x Serialize.float
+            |> Serialize.field .y Serialize.float
+            |> Serialize.finishRecord
+
+    pointDecoder : Json.Decode.Decoder Point
+    pointDecoder =
+        -- Since pointCodec doesn't have any custom error values, we can use `never` for our errorToString parameter.
+        Serialize.getJsonDecoder never pointCodec
+
+-}
+getJsonDecoder : (e -> String) -> Codec e a -> JD.Decoder a
+getJsonDecoder errorToString codec =
+    JD.value
+        |> JD.andThen
+            (\value ->
+                case decodeFromJson codec value of
+                    Ok ok ->
+                        JD.succeed ok
+
+                    Err (CustomError error) ->
+                        errorToString error |> JD.fail
+
+                    Err DataCorrupted ->
+                        JD.fail "Data corrupted (elm-serialize error)"
+
+                    Err SerializerOutOfDate ->
+                        JD.fail "Serializer out of date (elm-serialize error)"
+            )
 
 
 decode : String -> Maybe Bytes.Bytes
@@ -244,15 +313,15 @@ replaceFromUrl =
 
 {-| Extracts the encoding function contained inside the `Codec`.
 -}
-getEncoder : Codec e a -> a -> BE.Encoder
-getEncoder (Codec m) =
+getBytesEncoderHelper : Codec e a -> a -> BE.Encoder
+getBytesEncoderHelper (Codec m) =
     m.encoder
 
 
 {-| Extracts the json encoding function contained inside the `Codec`.
 -}
-getJsonEncoder : Codec e a -> a -> JE.Value
-getJsonEncoder (Codec m) =
+getJsonEncoderHelper : Codec e a -> a -> JE.Value
+getJsonEncoderHelper (Codec m) =
     m.jsonEncoder
 
 
@@ -262,7 +331,7 @@ encodeToBytes : Codec e a -> a -> Bytes.Bytes
 encodeToBytes codec value =
     BE.sequence
         [ BE.unsignedInt8 version
-        , value |> getEncoder codec
+        , value |> getBytesEncoderHelper codec
         ]
         |> BE.encode
 
@@ -289,7 +358,7 @@ encodeToJson codec value =
     JE.list
         identity
         [ JE.int version
-        , value |> getJsonEncoder codec
+        , value |> getJsonEncoderHelper codec
         ]
 
 
@@ -486,13 +555,13 @@ maybe justCodec =
 list : Codec e a -> Codec e (List a)
 list codec =
     build
-        (listEncode (getEncoder codec))
+        (listEncode (getBytesEncoderHelper codec))
         (BD.unsignedInt32 endian
             |> BD.andThen
-                (\length -> BD.loop ( length, [] ) (listStep (getBytesDecoder codec)))
+                (\length -> BD.loop ( length, [] ) (listStep (getBytesDecoderHelper codec)))
         )
-        (JE.list (getJsonEncoder codec))
-        (JD.list (getJsonDecoder codec)
+        (JE.list (getJsonEncoderHelper codec))
+        (JD.list (getJsonDecoderHelper codec)
             |> JD.map
                 (List.foldr
                     (\value state ->
@@ -833,7 +902,7 @@ record ctor =
 field : (a -> f) -> Codec e f -> RecordCodec e a (f -> b) -> RecordCodec e a b
 field getter codec (RecordCodec recordCodec) =
     RecordCodec
-        { encoder = \v -> (getEncoder codec <| getter v) :: recordCodec.encoder v
+        { encoder = \v -> (getBytesEncoderHelper codec <| getter v) :: recordCodec.encoder v
         , decoder =
             BD.map2
                 (\f x ->
@@ -848,8 +917,8 @@ field getter codec (RecordCodec recordCodec) =
                             Err err
                 )
                 recordCodec.decoder
-                (getBytesDecoder codec)
-        , jsonEncoder = \v -> (getJsonEncoder codec <| getter v) :: recordCodec.jsonEncoder v
+                (getBytesDecoderHelper codec)
+        , jsonEncoder = \v -> (getJsonEncoderHelper codec <| getter v) :: recordCodec.jsonEncoder v
         , jsonDecoder =
             JD.map2
                 (\f x ->
@@ -864,7 +933,7 @@ field getter codec (RecordCodec recordCodec) =
                             Err err
                 )
                 recordCodec.jsonDecoder
-                (JD.index recordCodec.fieldIndex (getJsonDecoder codec))
+                (JD.index recordCodec.fieldIndex (getJsonDecoderHelper codec))
         , fieldIndex = recordCodec.fieldIndex + 1
         }
 
@@ -1015,16 +1084,16 @@ variant1 ctor m1 =
     variant
         (\c v ->
             c
-                [ getEncoder m1 v
+                [ getBytesEncoderHelper m1 v
                 ]
         )
         (\c v ->
             c
-                [ getJsonEncoder m1 v
+                [ getJsonEncoderHelper m1 v
                 ]
         )
-        (BD.map (result1 ctor) (getBytesDecoder m1))
-        (JD.map (result1 ctor) (JD.index 1 (getJsonDecoder m1)))
+        (BD.map (result1 ctor) (getBytesDecoderHelper m1))
+        (JD.map (result1 ctor) (JD.index 1 (getJsonDecoderHelper m1)))
 
 
 result1 :
@@ -1051,26 +1120,26 @@ variant2 :
 variant2 ctor m1 m2 =
     variant
         (\c v1 v2 ->
-            [ getEncoder m1 v1
-            , getEncoder m2 v2
+            [ getBytesEncoderHelper m1 v1
+            , getBytesEncoderHelper m2 v2
             ]
                 |> c
         )
         (\c v1 v2 ->
-            [ getJsonEncoder m1 v1
-            , getJsonEncoder m2 v2
+            [ getJsonEncoderHelper m1 v1
+            , getJsonEncoderHelper m2 v2
             ]
                 |> c
         )
         (BD.map2
             (result2 ctor)
-            (getBytesDecoder m1)
-            (getBytesDecoder m2)
+            (getBytesDecoderHelper m1)
+            (getBytesDecoderHelper m2)
         )
         (JD.map2
             (result2 ctor)
-            (JD.index 1 (getJsonDecoder m1))
-            (JD.index 2 (getJsonDecoder m2))
+            (JD.index 1 (getJsonDecoderHelper m1))
+            (JD.index 2 (getJsonDecoderHelper m2))
         )
 
 
@@ -1103,30 +1172,30 @@ variant3 :
 variant3 ctor m1 m2 m3 =
     variant
         (\c v1 v2 v3 ->
-            [ getEncoder m1 v1
-            , getEncoder m2 v2
-            , getEncoder m3 v3
+            [ getBytesEncoderHelper m1 v1
+            , getBytesEncoderHelper m2 v2
+            , getBytesEncoderHelper m3 v3
             ]
                 |> c
         )
         (\c v1 v2 v3 ->
-            [ getJsonEncoder m1 v1
-            , getJsonEncoder m2 v2
-            , getJsonEncoder m3 v3
+            [ getJsonEncoderHelper m1 v1
+            , getJsonEncoderHelper m2 v2
+            , getJsonEncoderHelper m3 v3
             ]
                 |> c
         )
         (BD.map3
             (result3 ctor)
-            (getBytesDecoder m1)
-            (getBytesDecoder m2)
-            (getBytesDecoder m3)
+            (getBytesDecoderHelper m1)
+            (getBytesDecoderHelper m2)
+            (getBytesDecoderHelper m3)
         )
         (JD.map3
             (result3 ctor)
-            (JD.index 1 (getJsonDecoder m1))
-            (JD.index 2 (getJsonDecoder m2))
-            (JD.index 3 (getJsonDecoder m3))
+            (JD.index 1 (getJsonDecoderHelper m1))
+            (JD.index 2 (getJsonDecoderHelper m2))
+            (JD.index 3 (getJsonDecoderHelper m3))
         )
 
 
@@ -1164,34 +1233,34 @@ variant4 :
 variant4 ctor m1 m2 m3 m4 =
     variant
         (\c v1 v2 v3 v4 ->
-            [ getEncoder m1 v1
-            , getEncoder m2 v2
-            , getEncoder m3 v3
-            , getEncoder m4 v4
+            [ getBytesEncoderHelper m1 v1
+            , getBytesEncoderHelper m2 v2
+            , getBytesEncoderHelper m3 v3
+            , getBytesEncoderHelper m4 v4
             ]
                 |> c
         )
         (\c v1 v2 v3 v4 ->
-            [ getJsonEncoder m1 v1
-            , getJsonEncoder m2 v2
-            , getJsonEncoder m3 v3
-            , getJsonEncoder m4 v4
+            [ getJsonEncoderHelper m1 v1
+            , getJsonEncoderHelper m2 v2
+            , getJsonEncoderHelper m3 v3
+            , getJsonEncoderHelper m4 v4
             ]
                 |> c
         )
         (BD.map4
             (result4 ctor)
-            (getBytesDecoder m1)
-            (getBytesDecoder m2)
-            (getBytesDecoder m3)
-            (getBytesDecoder m4)
+            (getBytesDecoderHelper m1)
+            (getBytesDecoderHelper m2)
+            (getBytesDecoderHelper m3)
+            (getBytesDecoderHelper m4)
         )
         (JD.map4
             (result4 ctor)
-            (JD.index 1 (getJsonDecoder m1))
-            (JD.index 2 (getJsonDecoder m2))
-            (JD.index 3 (getJsonDecoder m3))
-            (JD.index 4 (getJsonDecoder m4))
+            (JD.index 1 (getJsonDecoderHelper m1))
+            (JD.index 2 (getJsonDecoderHelper m2))
+            (JD.index 3 (getJsonDecoderHelper m3))
+            (JD.index 4 (getJsonDecoderHelper m4))
         )
 
 
@@ -1234,38 +1303,38 @@ variant5 :
 variant5 ctor m1 m2 m3 m4 m5 =
     variant
         (\c v1 v2 v3 v4 v5 ->
-            [ getEncoder m1 v1
-            , getEncoder m2 v2
-            , getEncoder m3 v3
-            , getEncoder m4 v4
-            , getEncoder m5 v5
+            [ getBytesEncoderHelper m1 v1
+            , getBytesEncoderHelper m2 v2
+            , getBytesEncoderHelper m3 v3
+            , getBytesEncoderHelper m4 v4
+            , getBytesEncoderHelper m5 v5
             ]
                 |> c
         )
         (\c v1 v2 v3 v4 v5 ->
-            [ getJsonEncoder m1 v1
-            , getJsonEncoder m2 v2
-            , getJsonEncoder m3 v3
-            , getJsonEncoder m4 v4
-            , getJsonEncoder m5 v5
+            [ getJsonEncoderHelper m1 v1
+            , getJsonEncoderHelper m2 v2
+            , getJsonEncoderHelper m3 v3
+            , getJsonEncoderHelper m4 v4
+            , getJsonEncoderHelper m5 v5
             ]
                 |> c
         )
         (BD.map5
             (result5 ctor)
-            (getBytesDecoder m1)
-            (getBytesDecoder m2)
-            (getBytesDecoder m3)
-            (getBytesDecoder m4)
-            (getBytesDecoder m5)
+            (getBytesDecoderHelper m1)
+            (getBytesDecoderHelper m2)
+            (getBytesDecoderHelper m3)
+            (getBytesDecoderHelper m4)
+            (getBytesDecoderHelper m5)
         )
         (JD.map5
             (result5 ctor)
-            (JD.index 1 (getJsonDecoder m1))
-            (JD.index 2 (getJsonDecoder m2))
-            (JD.index 3 (getJsonDecoder m3))
-            (JD.index 4 (getJsonDecoder m4))
-            (JD.index 5 (getJsonDecoder m5))
+            (JD.index 1 (getJsonDecoderHelper m1))
+            (JD.index 2 (getJsonDecoderHelper m2))
+            (JD.index 3 (getJsonDecoderHelper m3))
+            (JD.index 4 (getJsonDecoderHelper m4))
+            (JD.index 5 (getJsonDecoderHelper m5))
         )
 
 
@@ -1313,45 +1382,45 @@ variant6 :
 variant6 ctor m1 m2 m3 m4 m5 m6 =
     variant
         (\c v1 v2 v3 v4 v5 v6 ->
-            [ getEncoder m1 v1
-            , getEncoder m2 v2
-            , getEncoder m3 v3
-            , getEncoder m4 v4
-            , getEncoder m5 v5
-            , getEncoder m6 v6
+            [ getBytesEncoderHelper m1 v1
+            , getBytesEncoderHelper m2 v2
+            , getBytesEncoderHelper m3 v3
+            , getBytesEncoderHelper m4 v4
+            , getBytesEncoderHelper m5 v5
+            , getBytesEncoderHelper m6 v6
             ]
                 |> c
         )
         (\c v1 v2 v3 v4 v5 v6 ->
-            [ getJsonEncoder m1 v1
-            , getJsonEncoder m2 v2
-            , getJsonEncoder m3 v3
-            , getJsonEncoder m4 v4
-            , getJsonEncoder m5 v5
-            , getJsonEncoder m6 v6
+            [ getJsonEncoderHelper m1 v1
+            , getJsonEncoderHelper m2 v2
+            , getJsonEncoderHelper m3 v3
+            , getJsonEncoderHelper m4 v4
+            , getJsonEncoderHelper m5 v5
+            , getJsonEncoderHelper m6 v6
             ]
                 |> c
         )
         (BD.map5
             (result6 ctor)
-            (getBytesDecoder m1)
-            (getBytesDecoder m2)
-            (getBytesDecoder m3)
-            (getBytesDecoder m4)
+            (getBytesDecoderHelper m1)
+            (getBytesDecoderHelper m2)
+            (getBytesDecoderHelper m3)
+            (getBytesDecoderHelper m4)
             (BD.map2 Tuple.pair
-                (getBytesDecoder m5)
-                (getBytesDecoder m6)
+                (getBytesDecoderHelper m5)
+                (getBytesDecoderHelper m6)
             )
         )
         (JD.map5
             (result6 ctor)
-            (JD.index 1 (getJsonDecoder m1))
-            (JD.index 2 (getJsonDecoder m2))
-            (JD.index 3 (getJsonDecoder m3))
-            (JD.index 4 (getJsonDecoder m4))
+            (JD.index 1 (getJsonDecoderHelper m1))
+            (JD.index 2 (getJsonDecoderHelper m2))
+            (JD.index 3 (getJsonDecoderHelper m3))
+            (JD.index 4 (getJsonDecoderHelper m4))
             (JD.map2 Tuple.pair
-                (JD.index 5 (getJsonDecoder m5))
-                (JD.index 6 (getJsonDecoder m6))
+                (JD.index 5 (getJsonDecoderHelper m5))
+                (JD.index 6 (getJsonDecoderHelper m6))
             )
         )
 
@@ -1404,53 +1473,53 @@ variant7 :
 variant7 ctor m1 m2 m3 m4 m5 m6 m7 =
     variant
         (\c v1 v2 v3 v4 v5 v6 v7 ->
-            [ getEncoder m1 v1
-            , getEncoder m2 v2
-            , getEncoder m3 v3
-            , getEncoder m4 v4
-            , getEncoder m5 v5
-            , getEncoder m6 v6
-            , getEncoder m7 v7
+            [ getBytesEncoderHelper m1 v1
+            , getBytesEncoderHelper m2 v2
+            , getBytesEncoderHelper m3 v3
+            , getBytesEncoderHelper m4 v4
+            , getBytesEncoderHelper m5 v5
+            , getBytesEncoderHelper m6 v6
+            , getBytesEncoderHelper m7 v7
             ]
                 |> c
         )
         (\c v1 v2 v3 v4 v5 v6 v7 ->
-            [ getJsonEncoder m1 v1
-            , getJsonEncoder m2 v2
-            , getJsonEncoder m3 v3
-            , getJsonEncoder m4 v4
-            , getJsonEncoder m5 v5
-            , getJsonEncoder m6 v6
-            , getJsonEncoder m7 v7
+            [ getJsonEncoderHelper m1 v1
+            , getJsonEncoderHelper m2 v2
+            , getJsonEncoderHelper m3 v3
+            , getJsonEncoderHelper m4 v4
+            , getJsonEncoderHelper m5 v5
+            , getJsonEncoderHelper m6 v6
+            , getJsonEncoderHelper m7 v7
             ]
                 |> c
         )
         (BD.map5
             (result7 ctor)
-            (getBytesDecoder m1)
-            (getBytesDecoder m2)
-            (getBytesDecoder m3)
+            (getBytesDecoderHelper m1)
+            (getBytesDecoderHelper m2)
+            (getBytesDecoderHelper m3)
             (BD.map2 Tuple.pair
-                (getBytesDecoder m4)
-                (getBytesDecoder m5)
+                (getBytesDecoderHelper m4)
+                (getBytesDecoderHelper m5)
             )
             (BD.map2 Tuple.pair
-                (getBytesDecoder m6)
-                (getBytesDecoder m7)
+                (getBytesDecoderHelper m6)
+                (getBytesDecoderHelper m7)
             )
         )
         (JD.map5
             (result7 ctor)
-            (JD.index 1 (getJsonDecoder m1))
-            (JD.index 2 (getJsonDecoder m2))
-            (JD.index 3 (getJsonDecoder m3))
+            (JD.index 1 (getJsonDecoderHelper m1))
+            (JD.index 2 (getJsonDecoderHelper m2))
+            (JD.index 3 (getJsonDecoderHelper m3))
             (JD.map2 Tuple.pair
-                (JD.index 4 (getJsonDecoder m4))
-                (JD.index 5 (getJsonDecoder m5))
+                (JD.index 4 (getJsonDecoderHelper m4))
+                (JD.index 5 (getJsonDecoderHelper m5))
             )
             (JD.map2 Tuple.pair
-                (JD.index 6 (getJsonDecoder m6))
-                (JD.index 7 (getJsonDecoder m7))
+                (JD.index 6 (getJsonDecoderHelper m6))
+                (JD.index 7 (getJsonDecoderHelper m7))
             )
         )
 
@@ -1507,61 +1576,61 @@ variant8 :
 variant8 ctor m1 m2 m3 m4 m5 m6 m7 m8 =
     variant
         (\c v1 v2 v3 v4 v5 v6 v7 v8 ->
-            [ getEncoder m1 v1
-            , getEncoder m2 v2
-            , getEncoder m3 v3
-            , getEncoder m4 v4
-            , getEncoder m5 v5
-            , getEncoder m6 v6
-            , getEncoder m7 v7
-            , getEncoder m8 v8
+            [ getBytesEncoderHelper m1 v1
+            , getBytesEncoderHelper m2 v2
+            , getBytesEncoderHelper m3 v3
+            , getBytesEncoderHelper m4 v4
+            , getBytesEncoderHelper m5 v5
+            , getBytesEncoderHelper m6 v6
+            , getBytesEncoderHelper m7 v7
+            , getBytesEncoderHelper m8 v8
             ]
                 |> c
         )
         (\c v1 v2 v3 v4 v5 v6 v7 v8 ->
-            [ getJsonEncoder m1 v1
-            , getJsonEncoder m2 v2
-            , getJsonEncoder m3 v3
-            , getJsonEncoder m4 v4
-            , getJsonEncoder m5 v5
-            , getJsonEncoder m6 v6
-            , getJsonEncoder m7 v7
-            , getJsonEncoder m8 v8
+            [ getJsonEncoderHelper m1 v1
+            , getJsonEncoderHelper m2 v2
+            , getJsonEncoderHelper m3 v3
+            , getJsonEncoderHelper m4 v4
+            , getJsonEncoderHelper m5 v5
+            , getJsonEncoderHelper m6 v6
+            , getJsonEncoderHelper m7 v7
+            , getJsonEncoderHelper m8 v8
             ]
                 |> c
         )
         (BD.map5
             (result8 ctor)
-            (getBytesDecoder m1)
-            (getBytesDecoder m2)
+            (getBytesDecoderHelper m1)
+            (getBytesDecoderHelper m2)
             (BD.map2 Tuple.pair
-                (getBytesDecoder m3)
-                (getBytesDecoder m4)
+                (getBytesDecoderHelper m3)
+                (getBytesDecoderHelper m4)
             )
             (BD.map2 Tuple.pair
-                (getBytesDecoder m5)
-                (getBytesDecoder m6)
+                (getBytesDecoderHelper m5)
+                (getBytesDecoderHelper m6)
             )
             (BD.map2 Tuple.pair
-                (getBytesDecoder m7)
-                (getBytesDecoder m8)
+                (getBytesDecoderHelper m7)
+                (getBytesDecoderHelper m8)
             )
         )
         (JD.map5
             (result8 ctor)
-            (JD.index 1 (getJsonDecoder m1))
-            (JD.index 2 (getJsonDecoder m2))
+            (JD.index 1 (getJsonDecoderHelper m1))
+            (JD.index 2 (getJsonDecoderHelper m2))
             (JD.map2 Tuple.pair
-                (JD.index 3 (getJsonDecoder m3))
-                (JD.index 4 (getJsonDecoder m4))
+                (JD.index 3 (getJsonDecoderHelper m3))
+                (JD.index 4 (getJsonDecoderHelper m4))
             )
             (JD.map2 Tuple.pair
-                (JD.index 5 (getJsonDecoder m5))
-                (JD.index 6 (getJsonDecoder m6))
+                (JD.index 5 (getJsonDecoderHelper m5))
+                (JD.index 6 (getJsonDecoderHelper m6))
             )
             (JD.map2 Tuple.pair
-                (JD.index 7 (getJsonDecoder m7))
-                (JD.index 8 (getJsonDecoder m8))
+                (JD.index 7 (getJsonDecoderHelper m7))
+                (JD.index 8 (getJsonDecoderHelper m8))
             )
         )
 
@@ -1663,10 +1732,10 @@ map fromBytes_ toBytes_ codec =
 mapHelper : (Result (Error e) a -> Result (Error e) b) -> (b -> a) -> Codec e a -> Codec e b
 mapHelper fromBytes_ toBytes_ codec =
     build
-        (\v -> toBytes_ v |> getEncoder codec)
-        (getBytesDecoder codec |> BD.map fromBytes_)
-        (\v -> toBytes_ v |> getJsonEncoder codec)
-        (getJsonDecoder codec |> JD.map fromBytes_)
+        (\v -> toBytes_ v |> getBytesEncoderHelper codec)
+        (getBytesDecoderHelper codec |> BD.map fromBytes_)
+        (\v -> toBytes_ v |> getJsonEncoderHelper codec)
+        (getJsonDecoderHelper codec |> JD.map fromBytes_)
 
 
 {-| Map from one codec to another codec in a way that can potentially fail when decoding.
@@ -1699,8 +1768,8 @@ I recommend writing tests for Codecs that use `mapValid` to make sure you get ba
 mapValid : (a -> Result e b) -> (b -> a) -> Codec e a -> Codec e b
 mapValid fromBytes_ toBytes_ codec =
     build
-        (\v -> toBytes_ v |> getEncoder codec)
-        (getBytesDecoder codec
+        (\v -> toBytes_ v |> getBytesEncoderHelper codec)
+        (getBytesDecoderHelper codec
             |> BD.map
                 (\value ->
                     case value of
@@ -1711,8 +1780,8 @@ mapValid fromBytes_ toBytes_ codec =
                             Err err
                 )
         )
-        (\v -> toBytes_ v |> getJsonEncoder codec)
-        (getJsonDecoder codec
+        (\v -> toBytes_ v |> getJsonEncoderHelper codec)
+        (getJsonDecoderHelper codec
             |> JD.map
                 (\value ->
                     case value of
@@ -1730,10 +1799,10 @@ mapValid fromBytes_ toBytes_ codec =
 mapError : (e1 -> e2) -> Codec e1 a -> Codec e2 a
 mapError mapFunc codec =
     build
-        (getEncoder codec)
-        (getBytesDecoder codec |> BD.map (mapErrorHelper mapFunc))
-        (getJsonEncoder codec)
-        (getJsonDecoder codec |> JD.map (mapErrorHelper mapFunc))
+        (getBytesEncoderHelper codec)
+        (getBytesDecoderHelper codec |> BD.map (mapErrorHelper mapFunc))
+        (getJsonEncoderHelper codec)
+        (getJsonDecoderHelper codec |> JD.map (mapErrorHelper mapFunc))
 
 
 mapErrorHelper : (e -> a) -> Result (Error e) b -> Result (Error a) b
@@ -1785,7 +1854,7 @@ Be careful here, and test your codecs using elm-test with larger inputs than you
 lazy : (() -> Codec e a) -> Codec e a
 lazy f =
     build
-        (\value -> getEncoder (f ()) value)
-        (BD.succeed () |> BD.andThen (\() -> getBytesDecoder (f ())))
-        (\value -> getJsonEncoder (f ()) value)
-        (JD.succeed () |> JD.andThen (\() -> getJsonDecoder (f ())))
+        (\value -> getBytesEncoderHelper (f ()) value)
+        (BD.succeed () |> BD.andThen (\() -> getBytesDecoderHelper (f ())))
+        (\value -> getJsonEncoderHelper (f ()) value)
+        (JD.succeed () |> JD.andThen (\() -> getJsonDecoderHelper (f ())))
