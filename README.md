@@ -150,20 +150,20 @@ type alias GpsCoordinate =
 type GpsVersions
     = GpsV1 GpsCoordinate
 
-gpsV1Codec : GpsCoordinate
+gpsV1Codec : S.Codec e GpsCoordinate
 gpsV1Codec =
     S.string
 
-gpsCodec : S.Codec GpsCoordinate
+gpsCodec : S.Codec e GpsCoordinate
 gpsCodec =
-    S.custom
+    S.customType
         (\gpsV1Encoder value ->
             case value of
                 GpsV1 text ->
                     gpsV1Encoder text
         )
         |> S.variant1 GpsV1 gpsV1Codec
-        |> S.finishCustom
+        |> S.finishCustomType
         |> S.map
             (\value ->
                 case value of
@@ -205,9 +205,9 @@ gpsCoordinateCodec =
                 V2GpsCoordinate tuple ->
                     gpsCoordinateV2Encoder tuple
         )
-        |> S.variant1 V1GpsCoordinate v1GpsCoordinateCodec
+        |> S.variant1 V1GpsCoordinate gpsCoordinateV1Codec
         -- We append our new GPS codec. This is not a breaking change.
-        |> S.variant1 V2GpsCoordinate v2GpsCoordinateCodec
+        |> S.variant1 V2GpsCoordinate gpsCoordinateV2Codec
         |> S.finishCustomType
         |> S.map
             (\value ->
