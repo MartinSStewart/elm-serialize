@@ -131,7 +131,7 @@ containersTests =
         ]
     , describe "Codec.tuple"
         [ roundtrips
-            (Fuzz.tuple ( maxRangeIntFuzz, maxRangeIntFuzz ))
+            (Fuzz.map2 Tuple.pair maxRangeIntFuzz maxRangeIntFuzz)
             (S.tuple S.int S.int)
             (SerializeV1.tuple SerializeV1.int SerializeV1.int)
         ]
